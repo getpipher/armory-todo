@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/armory-todo"><img src="https://img.shields.io/npm/v/armory-todo?color=cb3837&logo=npm" alt="npm"></a>
+  <a href="https://www.npmjs.com/package/@getpipher/armory-todo"><img src="https://img.shields.io/npm/v/@getpipher/armory-todo?color=cb3837&logo=npm" alt="npm"></a>
   <img src="https://img.shields.io/badge/pi-package-34d399" alt="pi-package">
   <img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="MIT">
   <img src="https://img.shields.io/badge/dependencies-0-9aa7a1" alt="no dependencies">
@@ -32,14 +32,13 @@ pi sessions are ephemeral conversation branches. A TODO you tell to session A is
 
 ```bash
 pi install git:github.com/getpipher/armory-todo      # from git
-# or, once published:
-pi install npm:armory-todo
+pi install npm:@getpipher/armory-todo                 # from npm (scoped)
 ```
 
 Then restart pi (or `/reload`). Or add to `~/.pi/agent/settings.json`:
 
 ```json
-{ "packages": ["git:github.com/getpipher/armory-todo"] }
+{ "packages": ["npm:@getpipher/armory-todo"] }
 ```
 
 ## Usage
