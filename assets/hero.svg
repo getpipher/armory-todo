@@ -1,153 +1,180 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 440" width="1600" height="440" role="img" aria-label="armory — global, cross-session TODO for pi">
   <defs>
-    <!-- background gradient -->
+    <!-- refined background gradient (deeper, layered) -->
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#080a09"/>
-      <stop offset="0.5" stop-color="#0c1117"/>
-      <stop offset="1" stop-color="#0a0e0c"/>
+      <stop offset="0" stop-color="#070a09"/>
+      <stop offset="0.55" stop-color="#0b1014"/>
+      <stop offset="1" stop-color="#080c0b"/>
     </linearGradient>
     <!-- accent gradient (emerald → cyan) -->
     <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="#34d399"/>
       <stop offset="1" stop-color="#22d3ee"/>
     </linearGradient>
-    <linearGradient id="accentV" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#34d399"/>
-      <stop offset="1" stop-color="#0e7c6a"/>
-    </linearGradient>
-    <!-- soft glows -->
-    <radialGradient id="glowA" cx="0.84" cy="0.16" r="0.55">
-      <stop offset="0" stop-color="#1f6f5c" stop-opacity="0.32"/>
-      <stop offset="1" stop-color="#1f6f5c" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="glowB" cx="0.10" cy="0.92" r="0.45">
-      <stop offset="0" stop-color="#0e7490" stop-opacity="0.22"/>
-      <stop offset="1" stop-color="#0e7490" stop-opacity="0"/>
-    </radialGradient>
-    <!-- dot grid -->
-    <pattern id="dots" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
-      <circle cx="1.5" cy="1.5" r="1" fill="#172220" fill-opacity="0.5"/>
-    </pattern>
-    <!-- panel shadow -->
-    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
-      <feGaussianBlur in="SourceAlpha" stdDeviation="10"/>
-      <feOffset dy="6" result="off"/>
-      <feFlood flood-color="#000000" flood-opacity="0.5"/>
-      <feComposite in2="off" operator="in"/>
-      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
     <!-- logo mark gradient stroke -->
     <linearGradient id="markStroke" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#34d399"/>
       <stop offset="1" stop-color="#22d3ee"/>
     </linearGradient>
+    <!-- soft directional glows -->
+    <radialGradient id="glowA" cx="0.20" cy="0.16" r="0.5">
+      <stop offset="0" stop-color="#1f6f5c" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#1f6f5c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0.08" cy="0.94" r="0.5">
+      <stop offset="0" stop-color="#0e7490" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#0e7490" stop-opacity="0"/>
+    </radialGradient>
+    <!-- dot grid -->
+    <pattern id="dots" x="0" y="0" width="26" height="26" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="1" fill="#16201d" fill-opacity="0.5"/>
+    </pattern>
+    <!-- fine grain texture (tactile depth, kills banding) -->
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.05"/></feComponentTransfer>
+    </filter>
+    <!-- directional drop shadow beneath the card (crisp, cast downward) -->
+    <filter id="cardShadow" x="-20%" y="-20%" width="140%" height="170%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="14"/>
+      <feOffset dy="24" result="off"/>
+      <feFlood flood-color="#000000" flood-opacity="0.68"/>
+      <feComposite in2="off" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <!-- soft floor falloff -->
+    <radialGradient id="floor" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#000000" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <!-- hard contact shadow gradient (darkest at edge, fading down) -->
+    <linearGradient id="contactEdge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#000000" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </linearGradient>
   </defs>
 
   <!-- background layers -->
   <rect width="1600" height="440" fill="url(#bg)"/>
-  <rect width="1600" height="440" fill="url(#dots)" opacity="0.55"/>
+  <rect width="1600" height="440" fill="url(#dots)" opacity="0.5"/>
   <rect width="1600" height="440" fill="url(#glowA)"/>
   <rect width="1600" height="440" fill="url(#glowB)"/>
-
-  <!-- top accent bar -->
-  <rect x="0" y="0" width="1600" height="3" fill="url(#accent)"/>
-  <!-- bottom subtle divider -->
-  <rect x="0" y="437" width="1600" height="3" fill="#14201c" opacity="0.9"/>
+  <rect width="1600" height="440" fill="url(#grain)" opacity="0.55"/>
+  <rect x="0" y="437" width="1600" height="3" fill="#13201c" opacity="0.9"/>
 
   <!-- ================= LEFT: logo + wordmark ================= -->
-  <g transform="translate(88, 84)">
-    <!-- logo mark: rounded "vault" with 3 persistent slots, top one active -->
-    <g transform="translate(0, 6)">
-      <rect x="0" y="0" rx="16" ry="16" width="72" height="72" fill="#0e1714" stroke="url(#markStroke)" stroke-width="2.5"/>
-      <!-- slot 1 (active/checked) -->
-      <rect x="16" y="16" width="40" height="8" rx="4" fill="#34d399"/>
-      <polyline points="20,20 27,26 38,16" fill="none" stroke="#0a0e0c" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-      <!-- slot 2 -->
-      <rect x="16" y="34" width="40" height="6" rx="3" fill="#2a3833"/>
-      <!-- slot 3 -->
-      <rect x="16" y="48" width="28" height="6" rx="3" fill="#2a3833"/>
-      <!-- persistent link node -->
-      <circle cx="64" cy="58" r="5" fill="#0e1714" stroke="#22d3ee" stroke-width="1.6"/>
+  <g transform="translate(88, 92)">
+    <!-- logo mark: bracket vault + stored slots + injection arrow -->
+    <g transform="translate(2, -2)">
+      <rect x="0" y="0" rx="16" ry="16" width="72" height="72" fill="#0e1714" stroke="url(#markStroke)" stroke-width="2.6"/>
+      <!-- top rim light (shared light source with the card) -->
+      <line x1="14" y1="3.5" x2="58" y2="3.5" stroke="#3a4a44" stroke-width="1.4" opacity="0.55" stroke-linecap="round"/>
+      <!-- stored TODO slots (top one active) -->
+      <rect x="14" y="17" width="36" height="7" rx="3.5" fill="#34d399"/>
+      <rect x="14" y="30" width="26" height="6" rx="3" fill="#2c3a35"/>
+      <rect x="14" y="42" width="31" height="6" rx="3" fill="#2c3a35"/>
+      <!-- persistence node: signals cross-session linkage -->
+      <circle cx="55" cy="55" r="5" fill="#0e1714" stroke="#22d3ee" stroke-width="1.8"/>
+      <circle cx="55" cy="55" r="1.8" fill="#22d3ee"/>
     </g>
 
-    <!-- wordmark -->
-    <text x="92" y="60" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="78" font-weight="800" fill="#eef5f1" letter-spacing="-2.5">armory<tspan fill="#34d399">.</tspan></text>
-    <rect x="94" y="76" width="196" height="5" rx="2.5" fill="url(#accent)" opacity="0.95"/>
+    <!-- wordmark (no tacked-on underline; the green period carries the accent) -->
+    <text x="92" y="58" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+          font-size="76" font-weight="800" fill="#eef5f1" letter-spacing="-2.5">armory<tspan fill="#34d399">.</tspan></text>
 
     <!-- tagline -->
-    <text x="92" y="118" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="26" font-weight="600" fill="#cdd6d1">global, cross-session TODO for pi</text>
-    <text x="92" y="146" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="16.5" fill="#7c8a84">persists across all sessions · auto-injected into every prompt</text>
+    <text x="92" y="102" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+          font-size="26" font-weight="600" fill="#d4ddd8">global, cross-session TODO for pi</text>
+    <text x="92" y="130" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+          font-size="16.5" fill="#8a9791">persists across all sessions · auto-injected into every prompt</text>
 
-    <!-- chips row -->
-    <g transform="translate(92, 168)" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12.5" font-weight="600">
+    <!-- chips row (tightened, brighter borders, icons) -->
+    <g transform="translate(92, 152)" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12.5" font-weight="600">
+      <!-- pi extension -->
       <g>
-        <rect x="0" y="0" rx="13" ry="13" width="118" height="26" fill="#10161a" stroke="#1f2a26" stroke-width="1"/>
-        <circle cx="15" cy="13" r="4" fill="#34d399"/>
-        <text x="27" y="17.5" fill="#9aa7a1" letter-spacing="0.5">pi extension</text>
+        <rect x="0" y="0" rx="13" ry="13" width="120" height="26" fill="#10171a" stroke="#3a4a44" stroke-width="1"/>
+        <circle cx="14" cy="13" r="4" fill="#34d399"/>
+        <text x="26" y="17.5" fill="#c2cfc9" letter-spacing="0.4">pi extension</text>
       </g>
-      <g transform="translate(130, 0)">
-        <rect x="0" y="0" rx="13" ry="13" width="92" height="26" fill="#10161a" stroke="#1f2a26" stroke-width="1"/>
-        <text x="46" y="17.5" fill="#9aa7a1" text-anchor="middle" letter-spacing="0.5">MIT</text>
+      <!-- MIT -->
+      <g transform="translate(132, 0)">
+        <rect x="0" y="0" rx="13" ry="13" width="92" height="26" fill="#10171a" stroke="#3a4a44" stroke-width="1"/>
+        <path d="M14,8 L14,18 M11,8 L17,8 M11,18 L17,18" fill="none" stroke="#8a9791" stroke-width="1.4" stroke-linecap="round"/>
+        <text x="27" y="17.5" fill="#c2cfc9" letter-spacing="0.4">MIT</text>
       </g>
-      <g transform="translate(232, 0)">
-        <rect x="0" y="0" rx="13" ry="13" width="96" height="26" fill="#10161a" stroke="#1f2a26" stroke-width="1"/>
-        <text x="48" y="17.5" fill="#9aa7a1" text-anchor="middle" letter-spacing="0.5">v0.1.0</text>
+      <!-- v0.1.0 -->
+      <g transform="translate(234, 0)">
+        <rect x="0" y="0" rx="13" ry="13" width="98" height="26" fill="#10171a" stroke="#3a4a44" stroke-width="1"/>
+        <path d="M14,9 L14,17 M14,9 L11,12 M14,9 L17,12" fill="none" stroke="#8a9791" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="27" y="17.5" fill="#c2cfc9" letter-spacing="0.4">v0.1.0</text>
       </g>
-      <g transform="translate(336, 0)">
-        <rect x="0" y="0" rx="13" ry="13" width="168" height="26" fill="#10161a" stroke="#1f2a26" stroke-width="1"/>
-        <text x="84" y="17.5" fill="#9aa7a1" text-anchor="middle" letter-spacing="0.5">no dependencies</text>
+      <!-- no dependencies -->
+      <g transform="translate(342, 0)">
+        <rect x="0" y="0" rx="13" ry="13" width="170" height="26" fill="#10171a" stroke="#3a4a44" stroke-width="1"/>
+        <rect x="10" y="9" width="8" height="8" rx="1.5" fill="none" stroke="#8a9791" stroke-width="1.4"/>
+        <text x="27" y="17.5" fill="#c2cfc9" letter-spacing="0.4">no dependencies</text>
       </g>
     </g>
   </g>
 
   <!-- ================= RIGHT: live "Open TODOs" preview card ================= -->
-  <g transform="translate(900, 60)">
-    <!-- panel shadow base -->
-    <rect x="0" y="6" rx="18" ry="18" width="612" height="320" fill="#000000" opacity="0.35" filter="url(#shadow)"/>
-    <!-- panel -->
-    <rect x="0" y="0" rx="18" ry="18" width="612" height="320" fill="#0b1110" stroke="#222e2a" stroke-width="1.2"/>
+  <g transform="translate(900, 56)">
+    <!-- soft floor falloff -->
+    <ellipse cx="306" cy="358" rx="290" ry="22" fill="url(#floor)" opacity="0.65"/>
+    <!-- directional drop shadow (cast downward, crisper) -->
+    <rect x="0" y="0" rx="18" ry="18" width="612" height="320" fill="#000000" opacity="0.6" filter="url(#cardShadow)"/>
+    <!-- panel (darker for contrast) -->
+    <rect x="0" y="0" rx="18" ry="18" width="612" height="320" fill="#0a1110" stroke="#2c3a35" stroke-width="1.3"/>
+    <!-- hard contact shadow hugging the bottom edge -->
+    <rect x="22" y="320" width="568" height="12" fill="url(#contactEdge)"/>
+    <!-- crisp 3px contact line (the hard touchdown, drawn on top) -->
+    <rect x="20" y="317" width="572" height="3" fill="#000000" opacity="0.95"/>
+    <!-- top rim light (single light source from above) -->
+    <line x1="16" y1="2.5" x2="596" y2="2.5" stroke="#3a4a44" stroke-width="1.2" opacity="0.6" stroke-linecap="round"/>
+
     <!-- titlebar -->
     <g transform="translate(20, 22)">
-      <circle cx="7" cy="7" r="5" fill="#2a3833"/>
-      <circle cx="24" cy="7" r="5" fill="#2a3833"/>
-      <circle cx="41" cy="7" r="5" fill="#2a3833"/>
-      <text x="566" y="11" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11.5" fill="#6b7872" text-anchor="end">system prompt · injected each turn</text>
+      <circle cx="7" cy="7" r="6" fill="#ff5f57"/>
+      <circle cx="25" cy="7" r="6" fill="#febc2e"/>
+      <circle cx="43" cy="7" r="6" fill="#28c840"/>
+      <text x="572" y="11.5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#e8efea" text-anchor="end">system prompt · injected each turn</text>
     </g>
-    <line x1="20" y1="46" x2="592" y2="46" stroke="#1a2421" stroke-width="1"/>
+    <line x1="20" y1="46" x2="592" y2="46" stroke="#1e2a26" stroke-width="1"/>
 
     <!-- injected block content -->
     <g transform="translate(28, 68)" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
       <!-- heading -->
       <text x="0" y="14" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14.5" font-weight="700" fill="#34d399">## Open TODOs (3)</text>
 
-      <!-- row 1: high, in_progress -->
+      <!-- row 1: high -->
       <g transform="translate(0, 40)">
         <rect x="0" y="0" rx="6" ry="6" width="40" height="20" fill="#3a2a0e" stroke="#fbbf24" stroke-width="1"/>
-        <text x="20" y="14.5" font-size="11" font-weight="700" fill="#fbbf24" text-anchor="middle" letter-spacing="0.4">high</text>
-        <text x="52" y="14.5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11.5" fill="#5f6b66">[td-…m6pjxhj]</text>
-        <text x="184" y="14.5" font-size="13" fill="#e8efea">⏵ Decouple global rules → AGENTS.md</text>
-        <rect x="408" y="2" rx="8" ry="8" width="44" height="16" fill="#10161a" stroke="#26312d"/>
-        <text x="430" y="13.5" font-size="10.5" fill="#7c8a84" text-anchor="middle">(pi)</text>
+        <text x="20" y="14.5" font-size="11" font-weight="700" fill="#fcd34d" text-anchor="middle" letter-spacing="0.4">high</text>
+        <text x="52" y="14.5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#b8c4be">[td-…m6pjxhj]</text>
+        <text x="184" y="14.5" font-size="13" fill="#f4f7f4">⏵ Decouple global rules → AGENTS.md</text>
+        <rect x="408" y="2" rx="8" ry="8" width="44" height="16" fill="#13202b" stroke="#2b4250"/>
+        <text x="430" y="13.5" font-size="10.5" fill="#a8b5af" text-anchor="middle">(pi)</text>
       </g>
 
       <!-- row 2: med -->
       <g transform="translate(0, 78)">
         <rect x="0" y="0" rx="6" ry="6" width="34" height="20" fill="#0e1f33" stroke="#60a5fa" stroke-width="1"/>
-        <text x="17" y="14.5" font-size="11" font-weight="700" fill="#60a5fa" text-anchor="middle" letter-spacing="0.4">med</text>
-        <text x="46" y="14.5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11.5" fill="#5f6b66">[td-…mzr0qs9]</text>
-        <text x="178" y="14.5" font-size="13" fill="#e8efea">Research browser-use vs Chrome MCP</text>
+        <text x="17" y="14.5" font-size="11" font-weight="700" fill="#93c5fd" text-anchor="middle" letter-spacing="0.4">med</text>
+        <text x="46" y="14.5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#b8c4be">[td-…mzr0qs9]</text>
+        <text x="178" y="14.5" font-size="13" fill="#f4f7f4">Research browser-use vs Chrome MCP</text>
       </g>
 
       <!-- row 3: low -->
       <g transform="translate(0, 116)">
-        <rect x="0" y="0" rx="6" ry="6" width="32" height="20" fill="#1a1f24" stroke="#9ca3af" stroke-width="1"/>
-        <text x="16" y="14.5" font-size="11" font-weight="700" fill="#9ca3af" text-anchor="middle" letter-spacing="0.4">low</text>
-        <text x="44" y="14.5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11.5" fill="#5f6b66">[td-…nke3etn]</text>
-        <text x="176" y="14.5" font-size="13" fill="#e8efea">.claude/ path normalization (skills)</text>
+        <rect x="0" y="0" rx="6" ry="6" width="32" height="20" fill="#1f252a" stroke="#cbd5e1" stroke-width="1"/>
+        <text x="16" y="14.5" font-size="11" font-weight="700" fill="#e2e8f0" text-anchor="middle" letter-spacing="0.4">low</text>
+        <text x="44" y="14.5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#b8c4be">[td-…nke3etn]</text>
+        <text x="176" y="14.5" font-size="13" fill="#f4f7f4">.claude/ path normalization (skills)</text>
       </g>
 
       <!-- footer hint -->
-      <text x="0" y="180" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#4f5b56">… +3 more · use <tspan fill="#34d399">todo list</tspan> to see all</text>
+      <text x="0" y="180" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#9aa7a1">… +3 more · use <tspan fill="#34d399">todo list</tspan> to see all</text>
     </g>
   </g>
 </svg>
