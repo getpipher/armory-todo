@@ -2,7 +2,14 @@
   "name": "armory-todo",
   "version": "0.1.0",
   "description": "Global, cross-session TODO for pi — persists across all sessions and is auto-injected into every prompt. The disk-backed counterpart to branch-scoped pi todo extensions.",
-  "keywords": ["pi-package", "pi-extension", "todo", "task", "persistent", "cross-session"],
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "todo",
+    "task",
+    "persistent",
+    "cross-session"
+  ],
   "license": "MIT",
   "type": "module",
   "author": "RECTOR (https://github.com/rz1989s)",
@@ -14,9 +21,18 @@
   "bugs": {
     "url": "https://github.com/getpipher/armory-todo/issues"
   },
-  "files": ["extensions", "src", "README.md", "LICENSE", "docs"],
+  "files": [
+    "extensions",
+    "src",
+    "assets",
+    "README.md",
+    "LICENSE",
+    "docs"
+  ],
   "pi": {
-    "extensions": ["./extensions"]
+    "extensions": [
+      "./extensions"
+    ]
   },
   "scripts": {
     "test": "node test/todo-store.test.mts"
@@ -27,8 +43,14 @@
     "typebox": "*"
   },
   "peerDependenciesMeta": {
-    "@earendil-works/pi-ai": { "optional": true },
-    "@earendil-works/pi-coding-agent": { "optional": true },
-    "typebox": { "optional": true }
+    "@earendil-works/pi-ai": {
+      "optional": true
+    },
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "typebox": {
+      "optional": true
+    }
   }
 }
