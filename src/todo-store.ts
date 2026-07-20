@@ -18,7 +18,7 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 import { getLivePath, getTodoDir, getLegacyPath } from "./paths.ts";
-import { migrateIfNeeded, splitTextFallback } from "./migrate.ts";
+import { migrateIfNeeded, migrateV2ToV3 } from "./migrate.ts";
 
 export type Priority = "low" | "med" | "high" | "critical";
 export type Status = "open" | "in_progress" | "parked" | "done" | "cancelled";
@@ -124,18 +124,12 @@ export function loadStore(): Store {
       throw new Error("invalid store shape");
     }
     if (parsed.version === 2) {
-      // v2 → v3: derive title/notes from each todo's text (inline fallback).
-      // Task 2 replaces this with migrateV2ToV3 (curated map + persist-once).
-      parsed = {
-        version: 3,
-        updatedAt: parsed.updatedAt,
-        todos: parsed.todos.map((t: any) => {
-          const { title, notes } = splitTextFallback(t.text ?? "");
-          const { text: _drop, ...rest } = t;
-          return { ...rest, title, notes } as Todo;
-        }),
-      };
-    } else if (parsed.version !== 3) {
+      // v2 → v3: curated map + fallback, persist once so migration runs a single time.
+      const migrated = migrateV2ToV3(parsed as any) as unknown as Store;
+      saveStore(migrated);
+      return migrated;
+    }
+    if (parsed.version !== 3) {
       throw new Error("invalid store shape");
     }
     return parsed;

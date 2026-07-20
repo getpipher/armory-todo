@@ -48,5 +48,82 @@ const { migrateIfNeeded } = await import("../src/migrate.ts");
   rmSync(todoDir, { recursive: true, force: true });
 }
 
+// --- v2 → v3 migration (migrateV2ToV3) ---
+const { migrateV2ToV3 } = await import("../src/migrate.ts");
+
+// Case 4: curated — the 2 known ids get hand-written title + notes
+{
+  const v2 = {
+    version: 2 as const,
+    updatedAt: "2026-07-20T17:51:46.838Z",
+    todos: [
+      { id: "td-mrt3zp9fcnug3p", text: "old junk-drawer blob", project: "bug-bounty", tags: [], priority: "critical", status: "open", source: "", createdAt: "x", updatedAt: "x", closedAt: null },
+      { id: "td-mrt4e1qi9td6jz", text: "old armory blob", project: "getpipher", tags: ["a"], priority: "high", status: "done", source: "", createdAt: "x", updatedAt: "x", closedAt: "x" },
+    ],
+  };
+  const v3 = migrateV2ToV3(v2);
+  ok("v2→v3: version 3", v3.version === 3);
+  ok("v2→v3: curated ZeroClaw title", v3.todos[0]!.title === "ZeroClaw×Solana bounty — Phase 4-5: demo video (score bottleneck, unstarted)");
+  ok("v2→v3: curated ZeroClaw notes start with listing", v3.todos[0]!.notes.startsWith("superteam.fun/earn/listing/zeroclaw"));
+  ok("v2→v3: curated armory title", v3.todos[1]!.title === "armory-todo v0.2.0 — Workstream A shipped (lifecycle boxes + prune + health + TUI)");
+  ok("v2→v3: curated armory notes mention incident", v3.todos[1]!.notes.includes("INCIDENT"));
+  ok("v2→v3: no text field on curated todos", !("text" in v3.todos[0]!) && !("text" in v3.todos[1]!));
+  ok("v2→v3: curated preserves project", v3.todos[0]!.project === "bug-bounty" && v3.todos[1]!.project === "getpipher");
+}
+
+// Case 5: fallback — single-line text
+{
+  const v3 = migrateV2ToV3({ version: 2, updatedAt: "x", todos: [{ id: "td-a", text: "just a title", project: "", tags: [], priority: "med", status: "open", source: "", createdAt: "x", updatedAt: "x", closedAt: null }] });
+  ok("v2→v3 fallback single-line: title=whole", v3.todos[0]!.title === "just a title");
+  ok("v2→v3 fallback single-line: notes empty", v3.todos[0]!.notes === "");
+}
+
+// Case 6: fallback — multi-line text
+{
+  const v3 = migrateV2ToV3({ version: 2, updatedAt: "x", todos: [{ id: "td-b", text: "the title\nline two\nline three", project: "", tags: [], priority: "med", status: "open", source: "", createdAt: "x", updatedAt: "x", closedAt: null }] });
+  ok("v2→v3 fallback multi-line: title=first line", v3.todos[0]!.title === "the title");
+  ok("v2→v3 fallback multi-line: notes=rest", v3.todos[0]!.notes === "line two\nline three");
+}
+
+// Case 7: fallback — first line > 120 (truncated title, full first line preserved in notes)
+{
+  const longFirst = "w".repeat(200);
+  const v3 = migrateV2ToV3({ version: 2, updatedAt: "x", todos: [{ id: "td-c", text: `${longFirst}\nrest of it`, project: "", tags: [], priority: "med", status: "open", source: "", createdAt: "x", updatedAt: "x", closedAt: null }] });
+  ok("v2→v3 fallback overlong: title ≤120", v3.todos[0]!.title.length <= 120);
+  ok("v2→v3 fallback overlong: notes starts with full original first line", v3.todos[0]!.notes.startsWith(longFirst));
+  ok("v2→v3 fallback overlong: notes ends with rest", v3.todos[0]!.notes.endsWith("rest of it"));
+}
+
+// Case 8: persist-once — loadStore migrates a v2 file to v3 on disk
+{
+  const dir = mkdtempSync(join(tmpdir(), "armory-mig-v3-"));
+  const file = join(dir, "todo.json");
+  writeFileSync(file, JSON.stringify({ version: 2, updatedAt: "2026-07-20T10:00:00Z", todos: [{ id: "td-p", text: "persist me\nbody", project: "", tags: [], priority: "med", status: "open", source: "", createdAt: "x", updatedAt: "x", closedAt: null }] }), "utf8");
+  process.env.TODO_DIR = dir;
+  const { loadStore } = await import("../src/todo-store.ts");
+  const store = loadStore();
+  ok("persist-once: in-memory version 3", store.version === 3);
+  ok("persist-once: title derived", store.todos[0]!.title === "persist me");
+  const onDisk = JSON.parse(readFileSync(file, "utf8"));
+  ok("persist-once: disk version 3", onDisk.version === 3);
+  ok("persist-once: disk no text field", !("text" in onDisk.todos[0]));
+  ok("persist-once: second load is a no-op (version already 3)", loadStore().version === 3);
+  delete process.env.TODO_DIR;
+  rmSync(dir, { recursive: true, force: true });
+}
+
+// Case 9: v2→v3 works under TODO_DIR override (no env guard needed)
+{
+  const dir = mkdtempSync(join(tmpdir(), "armory-mig-env-"));
+  process.env.TODO_DIR = dir;
+  const file = join(dir, "todo.json");
+  writeFileSync(file, JSON.stringify({ version: 2, updatedAt: "x", todos: [{ id: "td-e", text: "env override ok", project: "", tags: [], priority: "med", status: "open", source: "", createdAt: "x", updatedAt: "x", closedAt: null }] }), "utf8");
+  const { loadStore } = await import("../src/todo-store.ts");
+  const store = loadStore();
+  ok("v2→v3 under TODO_DIR override: migrates", store.version === 3 && store.todos[0]!.title === "env override ok");
+  delete process.env.TODO_DIR;
+  rmSync(dir, { recursive: true, force: true });
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
