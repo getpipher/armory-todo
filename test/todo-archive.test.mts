@@ -13,14 +13,10 @@ function eq<T>(name: string, got: T, want: T): void {
 
 const tmp = mkdtempSync(join(tmpdir(), "armory-archive-"));
 process.env.TODO_DIR = tmp;
-// Pre-Task-9 rewire: the live store still reads TODO_STORE_PATH. Point it at the
-// same temp file the v2 folder will use (<tmp>/todo.json) so prune/restore don't
-// touch the real ~/.pi/agent/todo.json. Task 9 drops this once loadStore reads
-// getLivePath() under TODO_DIR.
-process.env.TODO_STORE_PATH = join(tmp, "todo.json");
 
 const { loadArchive, saveArchive } = await import("../src/archive.ts");
 import type { Todo } from "../src/todo-store.ts";
+import { getLivePath } from "../src/paths.ts";
 
 // --- missing archive → empty store, no file created ---
 const empty = loadArchive();
@@ -47,7 +43,7 @@ const { addTodo, completeTodo, loadStore, saveStore, deleteTodo } = await import
 import { writeFileSync } from "node:fs";
 
 // Set up a live store with: one old-done (prunable), one fresh-done (not prunable), one open (never pruned)
-const livePath = process.env.TODO_STORE_PATH!;
+const livePath = getLivePath();
 const oldDate = new Date(Date.now() - 30 * 86400_000).toISOString(); // 30 days ago
 const freshDate = new Date().toISOString();
 writeFileSync(livePath, JSON.stringify({
