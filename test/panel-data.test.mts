@@ -10,23 +10,22 @@ function eq<T>(name: string, got: T, want: T): void {
 const { todoToItem, archiveSummaryToItems, actionsForTodo, configToSettingItems } = await import("../src/panel-data.ts");
 import type { Todo } from "../src/todo-store.ts";
 
-const t: Todo = { id: "td-x1", text: "ship the thing", project: "nuntius", tags: ["mcp"], priority: "critical", status: "open", source: "", createdAt: "2026-07-01T00:00:00Z", updatedAt: "2026-07-01T00:00:00Z", closedAt: null };
+const t: Todo = { id: "td-x1", title: "ship the thing", notes: "", project: "nuntius", tags: ["mcp"], priority: "critical", status: "open", source: "", createdAt: "2026-07-01T00:00:00Z", updatedAt: "2026-07-01T00:00:00Z", closedAt: null };
 
 // todoToItem
 const item = todoToItem(t);
 eq("item value is id", item.value, "td-x1");
 ok("item label has priority", item.label.includes("critical"));
-ok("item label has text", item.label.includes("ship the thing"));
+ok("item label has title", item.label.includes("ship the thing"));
 ok("item label has project", item.label.includes("nuntius"));
+ok("item label has no • when notes empty", !item.label.includes("•"));
 
-// todoToItem truncation — long text gets shortened with ellipsis
-const longText = "This is a very long todo text that exceeds the 80 character limit and should be truncated with an ellipsis so the row stays readable in the TUI panel without blowing out the width";
-const longItem = todoToItem({ ...t, text: longText });
-ok("long text truncated", longItem.label.includes("…"));
-ok("long text not full", !longItem.label.includes("blowing out the width"));
-ok("long text has id", longItem.label.includes("td-x1"));
-// short text not truncated
-ok("short text not truncated", !item.label.includes("…"));
+// todoToItem: • when notes present; title shown, notes content not shown
+const withNotes: Todo = { ...t, id: "td-x2", title: "has detail", notes: "lots of context", status: "in_progress" };
+const itemNotes = todoToItem(withNotes);
+ok("item label has • when notes present", itemNotes.label.includes("•"));
+ok("item label has title not notes content", itemNotes.label.includes("has detail") && !itemNotes.label.includes("lots of context"));
+ok("item label has in_progress pin", itemNotes.label.includes("⏵"));
 
 // actionsForTodo — open todo
 const openActions = actionsForTodo({ ...t, status: "open" });
@@ -35,6 +34,8 @@ ok("open has park", openActions.some((a) => a.action === "park"));
 ok("open has edit", openActions.some((a) => a.action === "edit"));
 ok("open has delete", openActions.some((a) => a.action === "delete"));
 ok("open no restore", !openActions.some((a) => a.action === "restore"));
+ok("edit label is 'Edit title' (renamed)", openActions.some((a) => a.label === "Edit title" && a.action === "edit"));
+ok("no 'Edit text' label (renamed)", !openActions.some((a) => a.label === "Edit text"));
 
 // parked todo
 const parkedActions = actionsForTodo({ ...t, status: "parked" });

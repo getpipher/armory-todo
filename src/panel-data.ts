@@ -7,24 +7,17 @@ import type { Todo } from "./todo-store.ts";
 import type { ArchiveSummary } from "./archive.ts";
 import type { TodoConfig } from "./config.ts";
 
-/** Format a todo as a SelectList item: "[id] (prio)⏵ (project) text…".
- *  The project tag is placed BEFORE the text so it's always visible (not
- *  clipped at the right edge). The text is truncated to a readable summary
- *  (first ~80 chars) so long running-log todos don't blow out the row width.
- *  The full text is still accessible via the "Edit text" action in the panel. */
+/** Format a todo as a SelectList item: "[id] (prio)⏵ (project) • title".
+ *  title is already ≤120 chars (enforced at write time), so no truncation is
+ *  needed. The • marker shows when notes is non-empty (signals "open the
+ *  detail view / use `todo get` for context"). */
 export function todoToItem(t: Todo): SelectItem {
   const pin = t.status === "in_progress" ? " ⏵" : "";
   const proj = t.project ? ` (${t.project})` : "";
-  const prefix = `[${t.id}] (${t.priority})${pin}${proj}`;
-  const maxText = 80;
-  let text = t.text;
-  if (text.length > maxText) {
-    const firstLine = text.split("\n")[0]!;
-    text = firstLine.length > maxText ? firstLine.slice(0, maxText - 1) + "…" : firstLine + "…";
-  }
+  const dot = t.notes.trim() ? " •" : "";
   return {
     value: t.id,
-    label: `${prefix} ${text}`,
+    label: `[${t.id}] (${t.priority})${pin}${proj}${dot} ${t.title}`,
   };
 }
 
@@ -50,7 +43,7 @@ export function actionsForTodo(t: Todo): { label: string; action: string }[] {
   if (t.status === "done" || t.status === "cancelled") {
     actions.push({ label: "Restore (from archive)", action: "restore" });
   }
-  actions.push({ label: "Edit text", action: "edit" });
+  actions.push({ label: "Edit title", action: "edit" });
   actions.push({ label: "Delete (cancel)", action: "delete" });
   return actions;
 }

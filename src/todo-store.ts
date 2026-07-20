@@ -18,7 +18,7 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 import { getLivePath, getTodoDir, getLegacyPath } from "./paths.ts";
-import { migrateIfNeeded } from "./migrate.ts";
+import { migrateIfNeeded, splitTextFallback } from "./migrate.ts";
 
 export type Priority = "low" | "med" | "high" | "critical";
 export type Status = "open" | "in_progress" | "parked" | "done" | "cancelled";
@@ -31,7 +31,8 @@ const STATUS_SET = new Set(STATUSES);
 
 export interface Todo {
   id: string;
-  text: string;
+  title: string;       // ≤120 chars, non-empty, trimmed
+  notes: string;       // any length, may be ""
   project: string;
   tags: string[];
   priority: Priority;
@@ -43,13 +44,14 @@ export interface Todo {
 }
 
 export interface Store {
-  version: 2;
+  version: 3;
   updatedAt: string;
   todos: Todo[];
 }
 
 export interface AddInput {
-  text: string;
+  title: string;
+  notes?: string;
   project?: string;
   tags?: string[];
   priority?: Priority;
@@ -57,7 +59,8 @@ export interface AddInput {
 }
 
 export interface UpdateInput {
-  text?: string;
+  title?: string;
+  notes?: string;
   project?: string;
   tags?: string[];
   priority?: Priority;
@@ -86,8 +89,19 @@ function genId(): string {
   return "td-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
+const TITLE_MAX = 120;  // must match the constant in migrate.ts
+
+function normalizeTitle(raw: string): string {
+  const t = raw.trim();
+  if (!t) throw new TodoError("title is required");
+  if (t.length > TITLE_MAX) {
+    throw new TodoError(`title must be ≤${TITLE_MAX} chars (got ${t.length}); move detail into notes`);
+  }
+  return t;
+}
+
 function emptyStore(): Store {
-  return { version: 2, updatedAt: now(), todos: [] };
+  return { version: 3, updatedAt: now(), todos: [] };
 }
 
 export function getStorePath(): string {
@@ -105,14 +119,24 @@ export function loadStore(): Store {
   if (!existsSync(path)) return emptyStore();
   try {
     const raw = readFileSync(path, "utf8");
-    const parsed = JSON.parse(raw) as Store;
+    let parsed = JSON.parse(raw) as Store;
     if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.todos)) {
       throw new Error("invalid store shape");
     }
-    if (parsed.version !== 2) {
-      // v1 → v2: accept it (the migration moved the file), just bump the version in memory.
-      // The data shape is otherwise identical; parked status is new but old todos won't have it.
-      parsed.version = 2;
+    if (parsed.version === 2) {
+      // v2 → v3: derive title/notes from each todo's text (inline fallback).
+      // Task 2 replaces this with migrateV2ToV3 (curated map + persist-once).
+      parsed = {
+        version: 3,
+        updatedAt: parsed.updatedAt,
+        todos: parsed.todos.map((t: any) => {
+          const { title, notes } = splitTextFallback(t.text ?? "");
+          const { text: _drop, ...rest } = t;
+          return { ...rest, title, notes } as Todo;
+        }),
+      };
+    } else if (parsed.version !== 3) {
+      throw new Error("invalid store shape");
     }
     return parsed;
   } catch {
@@ -160,13 +184,14 @@ function findOrFail(store: Store, id: string): Todo {
 }
 
 export function addTodo(input: AddInput): Todo {
-  const text = (input.text ?? "").trim();
-  if (!text) throw new TodoError("text is required");
+  const title = normalizeTitle(input.title);
   if (input.priority) assertPriority(input.priority);
+  const notes = (input.notes ?? "").trim();
   const store = loadStore();
   const todo: Todo = {
     id: genId(),
-    text,
+    title,
+    notes,
     project: (input.project ?? "").trim(),
     tags: (input.tags ?? []).map((t) => t.trim()).filter(Boolean),
     priority: input.priority ?? "med",
@@ -195,7 +220,7 @@ export function listTodos(filter: ListFilter = {}): Todo[] {
   if (filter.tag) out = out.filter((t) => t.tags.includes(filter.tag as string));
   if (filter.text) {
     const q = filter.text.toLowerCase();
-    out = out.filter((t) => t.text.toLowerCase().includes(q));
+    out = out.filter((t) => t.title.toLowerCase().includes(q) || t.notes.toLowerCase().includes(q));
   }
   if (filter.since) out = out.filter((t) => t.createdAt >= (filter.since as string));
   if (filter.before) out = out.filter((t) => t.createdAt < (filter.before as string));
@@ -218,11 +243,8 @@ export function listTodos(filter: ListFilter = {}): Todo[] {
 export function updateTodo(id: string, patch: UpdateInput): Todo {
   const store = loadStore();
   const todo = findOrFail(store, id);
-  if (patch.text !== undefined) {
-    const text = patch.text.trim();
-    if (!text) throw new TodoError("text must not be empty");
-    todo.text = text;
-  }
+  if (patch.title !== undefined) todo.title = normalizeTitle(patch.title);
+  if (patch.notes !== undefined) todo.notes = patch.notes.trim();
   if (patch.project !== undefined) todo.project = patch.project.trim();
   if (patch.tags !== undefined) todo.tags = patch.tags.map((t) => t.trim()).filter(Boolean);
   if (patch.priority !== undefined) {
@@ -240,6 +262,11 @@ export function updateTodo(id: string, patch: UpdateInput): Todo {
   todo.updatedAt = now();
   saveStore(store);
   return todo;
+}
+
+export function getTodo(id: string): Todo {
+  const store = loadStore();
+  return findOrFail(store, id);
 }
 
 export function completeTodo(id: string): Todo {
@@ -272,7 +299,8 @@ export function renderOpenBlock(max = 15): string {
   const lines = shown.map((t) => {
     const tag = t.project ? ` (${t.project})` : "";
     const pin = t.status === "in_progress" ? " ⏵" : "";
-    return `- [${t.id}] (${t.priority})${pin} ${t.text}${tag}`;
+    const dot = t.notes.trim() ? " •" : "";
+    return `- [${t.id}] (${t.priority})${pin}${dot} ${t.title}${tag}`;
   });
   const overflow = todos.length > max ? `\n- … +${todos.length - max} more (use \`todo list\`)` : "";
   return `## Open TODOs (${todos.length})\n${lines.join("\n")}${overflow}\n`;

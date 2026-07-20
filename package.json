@@ -35,7 +35,7 @@
     ]
   },
   "scripts": {
-    "test": "for t in todo-store todo-archive todo-config todo-migrate todo-health todo-hard-prune panel-data; do node test/$t.test.mts || exit 1; done"
+    "test": "for t in todo-store todo-title-notes todo-archive todo-config todo-migrate todo-health todo-hard-prune panel-data; do node test/$t.test.mts || exit 1; done"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

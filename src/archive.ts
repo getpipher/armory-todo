@@ -190,7 +190,7 @@ export function listArchived(filter: ArchiveListFilter = {}): ArchiveListResult 
   if (filter.status) out = out.filter((t) => t.status === filter.status);
   if (filter.text) {
     const q = filter.text.toLowerCase();
-    out = out.filter((t) => t.text.toLowerCase().includes(q));
+    out = out.filter((t) => t.title.toLowerCase().includes(q) || t.notes.toLowerCase().includes(q));
   }
   if (filter.since) out = out.filter((t) => (t.closedAt ?? t.updatedAt) >= (filter.since as string));
   if (filter.before) out = out.filter((t) => (t.closedAt ?? t.updatedAt) < (filter.before as string));

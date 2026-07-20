@@ -10,6 +10,36 @@
 import { copyFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 
+// v2 → v3 schema migration helpers. splitTextFallback is used by loadStore's
+// inline derivation (Task 1) and by migrateV2ToV3 (Task 2, with the curated
+// map). TITLE_MAX here must match the constant in todo-store.ts.
+const TITLE_MAX = 120;
+
+/** Truncate at the last word boundary ≤ TITLE_MAX (hard cut if none). No "…"
+ *  suffix — the cap is a hard rule, not a display truncation. */
+function truncateWordBoundary(s: string): string {
+  if (s.length <= TITLE_MAX) return s;
+  const slice = s.slice(0, TITLE_MAX);
+  const sp = slice.lastIndexOf(" ");
+  return sp > 0 ? slice.slice(0, sp) : slice;
+}
+
+/** Derive { title, notes } from a v2 `text` string (the fallback for any v2
+ *  todo not in the curated map). Deterministic + idempotent. */
+export function splitTextFallback(text: string): { title: string; notes: string } {
+  const raw = (text ?? "").trim();
+  if (!raw) return { title: "(untitled)", notes: "" };
+  const nl = raw.indexOf("\n");
+  if (nl < 0) {
+    if (raw.length <= TITLE_MAX) return { title: raw, notes: "" };
+    return { title: truncateWordBoundary(raw), notes: raw };
+  }
+  const firstLine = raw.slice(0, nl).trim();
+  const rest = raw.slice(nl + 1).trim();
+  if (firstLine.length <= TITLE_MAX) return { title: firstLine, notes: rest };
+  return { title: truncateWordBoundary(firstLine), notes: `${firstLine}\n${rest}` };
+}
+
 export interface MigrateInput {
   /** The v2 folder (e.g. ~/.pi/agent/todo/). */
   todoDir: string;

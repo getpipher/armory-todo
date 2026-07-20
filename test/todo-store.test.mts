@@ -38,11 +38,11 @@ const { addTodo, listTodos, updateTodo, completeTodo, deleteTodo, clearTodos, re
   await import("../src/todo-store.ts");
 
 // --- add + list defaults to actionable only ---
-const t1 = addTodo({ text: "decouple AGENTS.md", project: "pi", tags: ["dotfiles"], priority: "high", source: "test" });
+const t1 = addTodo({ title: "decouple AGENTS.md", project: "pi", tags: ["dotfiles"], priority: "high", source: "test" });
 eq("add returns id prefix", t1.id.startsWith("td-"), true);
 eq("add status open", t1.status, "open");
 eq("add priority high", t1.priority, "high");
-const t2 = addTodo({ text: "research browser-use", project: "pi", priority: "med" });
+const t2 = addTodo({ title: "research browser-use", project: "pi", priority: "med" });
 eq("list shows both open", listTodos().length, 2);
 
 // --- done excluded from default list ---
@@ -53,13 +53,13 @@ eq("completed in done filter", listTodos({ status: "done" }).length, 1);
 
 // --- sorting: in_progress before open; then priority ---
 updateTodo(t2.id, { status: "in_progress" });
-const t3 = addTodo({ text: "low prio task", priority: "low" });
+const t3 = addTodo({ title: "low prio task", priority: "low" });
 const order = listTodos();
 eq("in_progress sorts first", order[0]!.id, t2.id);
 eq("open high-prio? no — t3 is low, after... ", order[1]!.id, t3.id);
 
 // --- filtering by project + tag ---
-addTodo({ text: "sip thing", project: "sip", tags: ["mcp"] });
+addTodo({ title: "sip thing", project: "sip", tags: ["mcp"] });
 eq("project filter pi (actionable only — t1 is done)", listTodos({ project: "pi" }).length, 1);
 eq("project filter sip", listTodos({ project: "sip" }).length, 1);
 eq("tag filter mcp", listTodos({ tag: "mcp" }).length, 1);
@@ -109,7 +109,7 @@ const emptyBlock = renderOpenBlock();
 ok("empty block says none", emptyBlock.includes("(none"));
 
 // --- parked status: round-trip + excluded from renderOpenBlock ---
-const p1 = addTodo({ text: "maybe someday task", project: "pi", priority: "low" });
+const p1 = addTodo({ title: "maybe someday task", project: "pi", priority: "low" });
 const parked = parkTodo(p1.id);
 eq("park sets status parked", parked.status, "parked");
 eq("park clears closedAt", parked.closedAt, null);
@@ -125,8 +125,8 @@ updateTodo(p1.id, { status: "open" });
 eq("parked → open re-includes in default list", listTodos().some((t) => t.id === p1.id), true);
 
 // --- extended list: text search + since/before + pagination ---
-const s1 = addTodo({ text: "research browser-use for solana", project: "sol", priority: "low" });
-const s2 = addTodo({ text: "ship nuntius spec-2", project: "nuntius", priority: "high" });
+const s1 = addTodo({ title: "research browser-use for solana", project: "sol", priority: "low" });
+const s2 = addTodo({ title: "ship nuntius spec-2", project: "nuntius", priority: "high" });
 // text search
 const searchText = listTodos({ text: "browser-use" });
 eq("text search matches 1", searchText.length, 1);
@@ -140,6 +140,13 @@ const page2 = listTodos({ limit: 1, page: 2 });
 eq("limit=1 page1 has 1 item", page1.length, 1);
 eq("limit=1 page2 has 1 item", page2.length, 1);
 ok("pages differ", page1[0]!.id !== page2[0]!.id);
+
+// --- title cap (reference; full cases in todo-title-notes.test.mts) ---
+let capThrew = false;
+try { addTodo({ title: "a".repeat(121) }); } catch { capThrew = true; }
+ok("add rejects >120 title (reference)", capThrew);
+const capOk = addTodo({ title: "b".repeat(120) });
+eq("add accepts exactly 120 (reference)", capOk.title.length, 120);
 
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
