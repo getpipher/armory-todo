@@ -36,6 +36,7 @@ import {
 import { pruneTodos, restoreTodo, listArchived, archiveSummary } from "../src/archive";
 import { healthReport } from "../src/health";
 import { hardPrune } from "../src/hard-prune";
+import { TodoPanel } from "../src/panel";
 
 const ACTIONS = ["list", "add", "update", "complete", "delete", "clear", "park", "prune", "restore", "health"] as const;
 
@@ -380,7 +381,25 @@ export default function (pi: ExtensionAPI) {
           if (ctx.hasUI) ctx.ui.notify(`store: ${getStorePath()}`, "info");
           return;
         }
-        // default: list open
+        // default: open the interactive panel (TUI) or list open (non-TUI)
+        if (ctx.mode === "tui") {
+          await ctx.ui.custom<boolean>((_tui, theme, _kb, done) => {
+            const panel = new TodoPanel({
+              theme: theme as any,
+              onDone: () => done(true),
+              onNotify: (msg, type) => ctx.ui.notify(msg, type ?? "info"),
+              onEdit: (title, prefill) => ctx.ui.editor(title, prefill),
+            });
+            return {
+              render: (width: number) => panel.render(width),
+              invalidate: () => panel.invalidate(),
+              handleInput: (data: string) => panel.handleInput(data),
+              dispose: () => { panel.dispose?.(); },
+            } as any;
+          });
+          return;
+        }
+        // non-TUI fallback: list open as text
         const todos = listTodos();
         const msg = todos.length ? todos.map(fmt).join("\n") : "(no open TODOs)";
         if (ctx.hasUI) ctx.ui.notify(msg, "info");
