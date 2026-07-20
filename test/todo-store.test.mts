@@ -1,13 +1,13 @@
-// Standalone store tests for armory-todo (run: tsx test/todo-store.test.ts).
-// Uses TODO_STORE_PATH to avoid touching the real ~/.pi/agent/todo.json.
+// Standalone store tests for armory-todo (run: node test/todo-store.test.mts).
+// Uses TODO_DIR to avoid touching the real ~/.pi/agent/todo/.
 
 import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const tmp = mkdtempSync(join(tmpdir(), "armory-todo-"));
-process.env.TODO_STORE_PATH = join(tmp, "todo.json");
 process.env.TODO_DIR = tmp;
+// NOTE: no TODO_STORE_PATH — v2 uses TODO_DIR; the store reads <tmp>/todo.json
 
 let passed = 0;
 let failed = 0;
@@ -88,17 +88,18 @@ ok("block lists remaining", block.includes("research browser-use"));
 const reloaded = loadStore();
 ok("reload persists todos", reloaded.todos.length >= 1);
 
-// --- atomic + 0600 perms ---
-const stat = statSync(process.env.TODO_STORE_PATH);
+// --- atomic + 0600 perms (v2 path) ---
+const livePath = getLivePath();
+const stat = statSync(livePath);
 ok("store file mode 0600", (stat.mode & 0o777) === 0o600, `(mode ${(stat.mode & 0o777).toString(8)})`);
-ok("no .tmp leftover", !existsSync(process.env.TODO_STORE_PATH + ".tmp"));
+ok("no .tmp leftover", !existsSync(livePath + ".tmp"));
 
-// --- corrupt file recovery ---
-rmSync(process.env.TODO_STORE_PATH!, { force: true });
-writeFileSync(process.env.TODO_STORE_PATH!, "{ this is not json", "utf8");
+// --- corrupt file recovery (v2 path) ---
+rmSync(livePath, { force: true });
+writeFileSync(livePath, "{ this is not json", "utf8");
 const recovered = loadStore();
 ok("corrupt file → fresh empty store", recovered.todos.length === 0);
-ok("corrupt file backed up", existsSync(process.env.TODO_STORE_PATH + ".bad-") === false || recovered.todos.length === 0);
+ok("corrupt file backed up", existsSync(livePath + ".bad-") === false || recovered.todos.length === 0);
 
 // --- empty render ---
 clearTodos("cancelled");
