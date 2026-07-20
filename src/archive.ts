@@ -9,6 +9,8 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSy
 import { dirname } from "node:path";
 import { getArchivePath } from "./paths.ts";
 import type { Todo } from "./todo-store.ts";
+import { loadConfig } from "./config.ts";
+import { loadStore, saveStore } from "./todo-store.ts";
 
 export interface ArchiveStore {
   version: 2;
@@ -59,4 +61,59 @@ export function saveArchive(store: ArchiveStore): void {
     // some filesystems ignore mode bits
   }
   renameSync(tmp, path);
+}
+
+export interface PruneInput {
+  ageDays?: number;
+  all?: boolean;
+  statuses?: ("done" | "cancelled")[];
+}
+
+export interface PruneResult {
+  moved: number;
+  ids: string[];
+}
+
+/**
+ * Move done/cancelled todos from the live store to the archive.
+ *
+ * A todo qualifies when:
+ *   - its status is in `statuses` (default: config.prune.statuses = done+cancelled), AND
+ *   - `all` is true, OR its `closedAt` is older than `ageDays` days ago
+ *     (default: config.prune.defaultAgeDays).
+ *
+ * Both stores are saved atomically. Reversible via `restoreTodo`.
+ */
+export function pruneTodos(opts: PruneInput = {}): PruneResult {
+  const config = loadConfig();
+  const ageDays = opts.ageDays ?? config.prune.defaultAgeDays;
+  const statuses = new Set(opts.statuses ?? config.prune.statuses);
+  const cutoff = opts.all ? null : Date.now() - ageDays * 86400_000;
+
+  const live = loadStore();
+  const archive = loadArchive();
+
+  const moved: Todo[] = [];
+  const kept: Todo[] = [];
+  for (const todo of live.todos) {
+    if (!statuses.has(todo.status as "done" | "cancelled")) {
+      kept.push(todo);
+      continue;
+    }
+    if (cutoff !== null && todo.closedAt && Date.parse(todo.closedAt) > cutoff) {
+      // too fresh — keep in live
+      kept.push(todo);
+      continue;
+    }
+    moved.push(todo);
+  }
+
+  if (moved.length === 0) return { moved: 0, ids: [] };
+
+  live.todos = kept;
+  archive.todos.push(...moved);
+  saveStore(live);
+  saveArchive(archive);
+
+  return { moved: moved.length, ids: moved.map((t) => t.id) };
 }
