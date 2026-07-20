@@ -7,24 +7,24 @@ import type { Todo } from "./todo-store.ts";
 import type { ArchiveSummary } from "./archive.ts";
 import type { TodoConfig } from "./config.ts";
 
-/** Format a todo as a SelectList item: "[id] (prio)⏵ text (project)".
- *  The text is truncated to a readable summary (first ~80 chars) so long
- *  running-log todos don't blow out the row width. The full text is still
- *  accessible via the "Edit text" action in the panel. */
+/** Format a todo as a SelectList item: "[id] (prio)⏵ (project) text…".
+ *  The project tag is placed BEFORE the text so it's always visible (not
+ *  clipped at the right edge). The text is truncated to a readable summary
+ *  (first ~80 chars) so long running-log todos don't blow out the row width.
+ *  The full text is still accessible via the "Edit text" action in the panel. */
 export function todoToItem(t: Todo): SelectItem {
   const pin = t.status === "in_progress" ? " ⏵" : "";
   const proj = t.project ? ` (${t.project})` : "";
+  const prefix = `[${t.id}] (${t.priority})${pin}${proj}`;
   const maxText = 80;
   let text = t.text;
   if (text.length > maxText) {
-    // Truncate at the first newline if present (titles are usually the first line),
-    // then at maxText chars with an ellipsis.
     const firstLine = text.split("\n")[0]!;
     text = firstLine.length > maxText ? firstLine.slice(0, maxText - 1) + "…" : firstLine + "…";
   }
   return {
     value: t.id,
-    label: `[${t.id}] (${t.priority})${pin} ${text}${proj}`,
+    label: `${prefix} ${text}`,
   };
 }
 

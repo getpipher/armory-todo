@@ -388,7 +388,6 @@ export default function (pi: ExtensionAPI) {
               theme: theme as any,
               onDone: () => done(true),
               onNotify: (msg, type) => ctx.ui.notify(msg, type ?? "info"),
-              onEdit: (title, prefill) => ctx.ui.editor(title, prefill),
             });
             return {
               render: (width: number) => panel.render(width),

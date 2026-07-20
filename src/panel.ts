@@ -33,19 +33,20 @@ export interface TodoPanelOpts {
   theme: Theme;
   onDone: () => void;
   onNotify: (msg: string, type?: "info" | "warning" | "error") => void;
-  onEdit: (title: string, prefill: string) => Promise<string | undefined>;
 }
 
 export class TodoPanel extends Container {
   private readonly theme: Theme;
   private readonly onDone: () => void;
   private readonly onNotify: (msg: string, type?: "info" | "warning" | "error") => void;
-  private readonly onEdit: (title: string, prefill: string) => Promise<string | undefined>;
   private currentBox: Box = "active";
   private filterInput: Input;
   private selectList: SelectList;
   private actionMode = false;
   private actionList: SelectList | null = null;
+  private editMode = false;
+  private editInput: Input | null = null;
+  private editId = "";
   private config: TodoConfig;
   private healthFlags: string[] = [];
 
@@ -54,7 +55,6 @@ export class TodoPanel extends Container {
     this.theme = opts.theme;
     this.onDone = opts.onDone;
     this.onNotify = opts.onNotify;
-    this.onEdit = opts.onEdit;
     this.config = loadConfig();
     try { this.healthFlags = healthReport().flags; } catch { /* optional */ }
 
@@ -96,7 +96,11 @@ export class TodoPanel extends Container {
     this.addChild(this.filterInput);
     this.addChild(new Spacer(1));
 
-    if (this.actionMode && this.actionList) {
+    if (this.editMode && this.editInput) {
+      this.addChild(new Text(this.theme.fg("accent", `  Edit [${this.editId}]:`), 0, 0));
+      this.addChild(this.editInput);
+      this.addChild(new Text(this.theme.fg("dim", "  enter save • esc cancel"), 0, 0));
+    } else if (this.actionMode && this.actionList) {
       this.addChild(new Text(this.theme.fg("accent", "  Action:"), 0, 0));
       this.addChild(this.actionList);
     } else if (this.currentBox === "config") {
@@ -199,8 +203,18 @@ export class TodoPanel extends Container {
         case "edit": {
           const all = listTodos({ status: "all", limit: 200 });
           const t = all.find((x) => x.id === id);
-          const edited = await this.onEdit("Edit TODO text", t?.text ?? "");
-          if (edited !== undefined) { updateTodo(id, { text: edited }); this.onNotify(`Edited ${id}`); }
+          this.editId = id;
+          this.editInput = new Input();
+          this.editInput.setValue(t?.text ?? "");
+          this.editInput.onSubmit = (value) => {
+            if (value.trim()) { updateTodo(id, { text: value.trim() }); this.onNotify(`Edited ${id}`); }
+            this.exitEditMode();
+          };
+          this.editInput.onEscape = () => this.exitEditMode();
+          this.actionMode = false;
+          this.actionList = null;
+          this.editMode = true;
+          this.renderShell();
           break;
         }
       }
@@ -262,6 +276,14 @@ export class TodoPanel extends Container {
     this.onNotify(`Config saved: ${id} = ${value}`, "info");
   }
 
+  private exitEditMode(): void {
+    this.editMode = false;
+    this.editInput = null;
+    this.editId = "";
+    this.refreshList();
+    this.renderShell();
+  }
+
   private switchBox(dir: 1 | -1): void {
     const idx = BOXES.indexOf(this.currentBox);
     const next = (idx + dir + BOXES.length) % BOXES.length;
@@ -274,6 +296,15 @@ export class TodoPanel extends Container {
   }
 
   handleInput(data: string): void {
+    if (this.editMode && this.editInput) {
+      if (matchesKey(data, "escape") || matchesKey(data, "esc")) {
+        this.exitEditMode();
+        return;
+      }
+      this.editInput.handleInput(data);
+      this.invalidate();
+      return;
+    }
     if (this.actionMode && this.actionList) {
       if (matchesKey(data, "escape") || matchesKey(data, "esc")) {
         this.actionMode = false;
