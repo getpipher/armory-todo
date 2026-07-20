@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, existsSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, statSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -21,7 +21,7 @@ import { getLivePath } from "../src/paths.ts";
 // --- missing archive → empty store, no file created ---
 const empty = loadArchive();
 eq("missing archive → 0 todos", empty.todos.length, 0);
-eq("archive version 2", empty.version, 2);
+eq("archive version 3", empty.version, 3);
 ok("archive file not created on bare load", !existsSync(join(tmp, "todo-archive.json")));
 
 // --- save + reload round-trip ---
@@ -124,6 +124,33 @@ ok("arch limit=1 page1 has <=1", archPage1.items.length <= 1);
 // text search on archived
 const archSearch = listArchived({ text: "done", limit: 100 });
 ok("arch text search works", archSearch.items.every((t) => t.title.includes("done")));
+
+// --- v2 archive → v3 on load (symmetric with live store) ---
+{
+  const dir = mkdtempSync(join(tmpdir(), "armory-arc-v3-"));
+  process.env.TODO_DIR = dir;
+  const arcFile = join(dir, "todo-archive.json");
+  writeFileSync(arcFile, JSON.stringify({
+    version: 2, updatedAt: "x",
+    todos: [{ id: "td-arc-1", text: "done thing\nwith detail", project: "pi", tags: [], priority: "med", status: "done", source: "", createdAt: "x", updatedAt: "x", closedAt: "2026-07-01T00:00:00Z" }],
+  }), "utf8");
+  const { loadArchive, listArchived } = await import("../src/archive.ts");
+  const arc = loadArchive();
+  ok("archive v2→v3: version 3", arc.version === 3);
+  ok("archive v2→v3: title derived", arc.todos[0]!.title === "done thing");
+  ok("archive v2→v3: notes derived", arc.todos[0]!.notes === "with detail");
+  ok("archive v2→v3: no text field", !("text" in arc.todos[0]!));
+  // persisted to disk
+  const onDisk = JSON.parse(readFileSync(arcFile, "utf8"));
+  ok("archive v2→v3: disk version 3", onDisk.version === 3);
+  // listArchived text filter matches title OR notes
+  const byTitle = listArchived({ text: "done thing", limit: 50 });
+  ok("archive listArchived text matches title", byTitle.items.some((t) => t.title === "done thing"));
+  const byNotes = listArchived({ text: "with detail", limit: 50 });
+  ok("archive listArchived text matches notes", byNotes.items.some((t) => t.notes === "with detail"));
+  delete process.env.TODO_DIR;
+  rmSync(dir, { recursive: true, force: true });
+}
 
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
