@@ -318,6 +318,7 @@ export default function (pi: ExtensionAPI) {
             const preview = hardPrune({ confirm: false, box: box as any, olderThan, project });
             if (ctx.hasUI) {
               const yes = await ctx.ui.confirm(
+                "Hard Prune",
                 `HARD PRUNE (permanent deletion)\n${preview.message}\nBox: ${box ?? "archive"}${olderThan ? `, older than ${olderThan}d` : ""}${project ? `, project: ${project}` : ""}\n\nProceed?`,
               );
               if (!yes) { ctx.ui.notify("Hard-prune cancelled.", "info"); return; }
