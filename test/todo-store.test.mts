@@ -123,6 +123,23 @@ ok("parked not in renderOpenBlock", !blockAfterPark.includes("maybe someday task
 updateTodo(p1.id, { status: "open" });
 eq("parked → open re-includes in default list", listTodos().some((t) => t.id === p1.id), true);
 
+// --- extended list: text search + since/before + pagination ---
+const s1 = addTodo({ text: "research browser-use for solana", project: "sol", priority: "low" });
+const s2 = addTodo({ text: "ship nuntius spec-2", project: "nuntius", priority: "high" });
+// text search
+const searchText = listTodos({ text: "browser-use" });
+eq("text search matches 1", searchText.length, 1);
+eq("text search returns the right one", searchText[0]!.id, s1.id);
+eq("text search no match returns 0", listTodos({ text: "zzznomatch" }).length, 0);
+// since filter on createdAt
+eq("since filter includes s1", listTodos({ since: s1.createdAt }).some((t) => t.id === s1.id), true);
+// pagination
+const page1 = listTodos({ limit: 1, page: 1 });
+const page2 = listTodos({ limit: 1, page: 2 });
+eq("limit=1 page1 has 1 item", page1.length, 1);
+eq("limit=1 page2 has 1 item", page2.length, 1);
+ok("pages differ", page1[0]!.id !== page2[0]!.id);
+
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

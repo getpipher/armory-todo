@@ -107,6 +107,28 @@ try {
 }
 ok("restore non-archived id throws", threw);
 
+// --- listArchived: filters + pagination ---
+const { listArchived, archiveSummary } = await import("../src/archive.ts");
+
+const summary = archiveSummary();
+ok("summary has total >= 1", summary.total >= 1);
+ok("summary byProject is an object", typeof summary.byProject === "object");
+ok("summary byMonth is an object", typeof summary.byMonth === "object");
+
+const allArch = listArchived({ since: "2000-01-01", limit: 100 });
+ok("listArchived returns items + total", allArch.items.length >= 1 && allArch.total >= 1);
+// bare call → summary-only (items: [])
+const bare = listArchived();
+eq("bare listArchived returns empty items", bare.items.length, 0);
+ok("bare listArchived has summary", bare.summary !== undefined);
+// pagination
+const archPage1 = listArchived({ text: "done", limit: 1, page: 1 });
+const archPage2 = listArchived({ text: "done", limit: 1, page: 2 });
+ok("arch limit=1 page1 has <=1", archPage1.items.length <= 1);
+// text search on archived
+const archSearch = listArchived({ text: "done", limit: 100 });
+ok("arch text search works", archSearch.items.every((t) => t.text.includes("done")));
+
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

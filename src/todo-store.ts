@@ -68,6 +68,11 @@ export interface ListFilter {
   status?: Status | "all";
   project?: string;
   tag?: string;
+  text?: string;       // substring match on todo.text (case-insensitive)
+  since?: string;      // ISO date; filter createdAt >= since
+  before?: string;     // ISO date; filter createdAt < before
+  limit?: number;      // default 20
+  page?: number;       // default 1 (1-indexed)
 }
 
 export class TodoError extends Error {}
@@ -180,7 +185,13 @@ export function listTodos(filter: ListFilter = {}): Todo[] {
   }
   if (filter.project) out = out.filter((t) => t.project === filter.project);
   if (filter.tag) out = out.filter((t) => t.tags.includes(filter.tag as string));
-  return out.slice().sort((a, b) => {
+  if (filter.text) {
+    const q = filter.text.toLowerCase();
+    out = out.filter((t) => t.text.toLowerCase().includes(q));
+  }
+  if (filter.since) out = out.filter((t) => t.createdAt >= (filter.since as string));
+  if (filter.before) out = out.filter((t) => t.createdAt < (filter.before as string));
+  const sorted = out.slice().sort((a, b) => {
     if (a.status !== b.status) {
       // in_progress before open (actionable ordering)
       return a.status === "in_progress" ? -1 : b.status === "in_progress" ? 1 : 0;
@@ -190,6 +201,10 @@ export function listTodos(filter: ListFilter = {}): Todo[] {
     }
     return a.createdAt.localeCompare(b.createdAt);
   });
+  const limit = filter.limit ?? 20;
+  const page = filter.page ?? 1;
+  const start = (page - 1) * limit;
+  return sorted.slice(start, start + limit);
 }
 
 export function updateTodo(id: string, patch: UpdateInput): Todo {
