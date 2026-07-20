@@ -92,6 +92,20 @@ todos. It's gated three ways:
 Everything else in armory-todo is reversible. `prune --hard` is the one
 irreversible escape hatch, always user-confirmed.
 
+## Interactive panel (SPEC-3)
+
+Run `/todo` (no arg) in a TUI session to open the interactive triage panel:
+
+- **Box tabs** (Tab / Shift+Tab): Active · Parked · Archive · Config
+- **Filter input**: type to search by text (live filter)
+- **SelectList**: arrow keys navigate, Enter selects
+- **Action submenu** (on Enter): Complete / Park / Re-activate / Restore / Edit text / Delete
+- **Archive box**: summary-first (counts by project + month) → Enter on a bucket to drill down
+- **Config box**: SettingsList with prune ages + health thresholds — edit live, persists to `todo.config.json`
+- **Escape**: exit the panel
+
+Typed subcommands (`/todo park <id>`, `/todo prune`, etc.) all still work alongside the panel. Non-TUI sessions (`pi -p`, RPC) fall back to the text list.
+
 ## Usage
 
 **Say it naturally** — the model calls the `todo` tool:
@@ -153,7 +167,7 @@ Full design + decisions: [`docs/superpowers/specs/2026-07-20-lifecycle-boxes-pru
 |---|---|---|
 | `TODO_DIR` | `~/.pi/agent/todo/` | override the store folder (tests / multiple profiles) |
 
-Run the store tests: `npm test` (129/129 across `todo-store` + `todo-archive` + `todo-config` + `todo-migrate` + `todo-health` + `todo-hard-prune`).
+Run the store tests: `npm test` (147/147 across 7 suites).
 
 ## Security
 
