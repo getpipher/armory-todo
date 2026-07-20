@@ -34,7 +34,7 @@ eq("config path under TODO_DIR", getConfigPath(), join(tmp, "todo.config.json"))
 ok("legacy path is the real ~/.pi/agent/todo.json", getLegacyPath().endsWith(join(".pi", "agent", "todo.json")));
 
 // fresh import after env set
-const { addTodo, listTodos, updateTodo, completeTodo, deleteTodo, clearTodos, renderOpenBlock, loadStore } =
+const { addTodo, listTodos, updateTodo, completeTodo, deleteTodo, clearTodos, renderOpenBlock, loadStore, parkTodo } =
   await import("../src/todo-store.ts");
 
 // --- add + list defaults to actionable only ---
@@ -106,6 +106,22 @@ clearTodos("cancelled");
 for (const t of listTodos({ status: "all" })) deleteTodo(t.id);
 const emptyBlock = renderOpenBlock();
 ok("empty block says none", emptyBlock.includes("(none"));
+
+// --- parked status: round-trip + excluded from renderOpenBlock ---
+const p1 = addTodo({ text: "maybe someday task", project: "pi", priority: "low" });
+const parked = parkTodo(p1.id);
+eq("park sets status parked", parked.status, "parked");
+eq("park clears closedAt", parked.closedAt, null);
+// parked is NOT in the default actionable list
+eq("parked excluded from default list", listTodos().some((t) => t.id === p1.id), false);
+// parked IS visible with status=all
+eq("parked in status=all", listTodos({ status: "all" }).some((t) => t.id === p1.id), true);
+// parked is NOT in the injected Open TODOs block
+const blockAfterPark = renderOpenBlock();
+ok("parked not in renderOpenBlock", !blockAfterPark.includes("maybe someday task"));
+// parked → back to open via update
+updateTodo(p1.id, { status: "open" });
+eq("parked → open re-includes in default list", listTodos().some((t) => t.id === p1.id), true);
 
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);

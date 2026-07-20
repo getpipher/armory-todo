@@ -21,11 +21,11 @@ const DEFAULT_PATH = join(homedir(), ".pi", "agent", "todo.json");
 const STORE_PATH = process.env.TODO_STORE_PATH || DEFAULT_PATH;
 
 export type Priority = "low" | "med" | "high" | "critical";
-export type Status = "open" | "in_progress" | "done" | "cancelled";
+export type Status = "open" | "in_progress" | "parked" | "done" | "cancelled";
 
 const PRIO_ORDER: Record<Priority, number> = { critical: 0, high: 1, med: 2, low: 3 };
 const PRIORITIES: Priority[] = ["low", "med", "high", "critical"];
-const STATUSES: Status[] = ["open", "in_progress", "done", "cancelled"];
+const STATUSES: Status[] = ["open", "in_progress", "parked", "done", "cancelled"];
 const PRIO_SET = new Set(PRIORITIES);
 const STATUS_SET = new Set(STATUSES);
 
@@ -221,6 +221,10 @@ export function updateTodo(id: string, patch: UpdateInput): Todo {
 
 export function completeTodo(id: string): Todo {
   return updateTodo(id, { status: "done" });
+}
+
+export function parkTodo(id: string): Todo {
+  return updateTodo(id, { status: "parked" });
 }
 
 export function deleteTodo(id: string): Todo {
