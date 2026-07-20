@@ -19,6 +19,15 @@ ok("item label has priority", item.label.includes("critical"));
 ok("item label has text", item.label.includes("ship the thing"));
 ok("item label has project", item.label.includes("nuntius"));
 
+// todoToItem truncation — long text gets shortened with ellipsis
+const longText = "This is a very long todo text that exceeds the 80 character limit and should be truncated with an ellipsis so the row stays readable in the TUI panel without blowing out the width";
+const longItem = todoToItem({ ...t, text: longText });
+ok("long text truncated", longItem.label.includes("…"));
+ok("long text not full", !longItem.label.includes("blowing out the width"));
+ok("long text has id", longItem.label.includes("td-x1"));
+// short text not truncated
+ok("short text not truncated", !item.label.includes("…"));
+
 // actionsForTodo — open todo
 const openActions = actionsForTodo({ ...t, status: "open" });
 ok("open has complete", openActions.some((a) => a.action === "complete"));
