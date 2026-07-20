@@ -55,8 +55,9 @@ TODOs live in one of three states, only one of which hits the agent context:
 todos from the live file to `todo-archive.json` — nothing is deleted. `prune --all`
 ignores age. `restore <id>` brings an archived todo back as `open`.
 
-The only irreversible action is `prune --hard` (SPEC-2, not yet shipped) — it
-requires an explicit `confirm: true` and is always user-confirmed.
+The only irreversible action is `prune --hard` (hard-prune) — it requires an
+explicit `confirm: true` and is always user-confirmed. See **Self-awareness**
+below.
 
 **Storage layout:**
 
@@ -69,6 +70,27 @@ requires an explicit `confirm: true` and is always user-confirmed.
 
 A v1 single-file store at `~/.pi/agent/todo.json` is migrated automatically on
 first load after upgrade.
+
+## Self-awareness: health + hard-prune
+
+**`health`** reports bloat across all three boxes — counts, stale items, and
+actionable suggestions (e.g. "archive: 41 items older than 180d → consider
+`prune --hard --box archive --older-than 180 --confirm`"). On `session_start`,
+if any bloat flags are detected, the startup notify appends a `⚠ N bloat
+signals` nudge.
+
+**`prune --hard`** is the **only irreversible action** — it permanently deletes
+todos. It's gated three ways:
+1. **Tool-level:** `confirm: true` is required in the tool call; without it the
+   action refuses with a clear message.
+2. **Prompt-level:** the agent is instructed to always run `health` first,
+   surface the report + the exact proposed command, and wait for an explicit
+   user "yes" before passing `confirm: true`.
+3. **Slash-level:** `/todo prune --hard` prompts an interactive `ctx.ui.confirm`
+   yes/no dialog before executing.
+
+Everything else in armory-todo is reversible. `prune --hard` is the one
+irreversible escape hatch, always user-confirmed.
 
 ## Usage
 
@@ -90,7 +112,9 @@ first load after upgrade.
 /todo park <id>          defer (parked — not injected, recoverable)
 /todo restore <id>       bring an archived todo back as open
 /todo prune [--all]      move done/cancelled to archive (reversible)
+/todo prune --hard        permanent deletion (interactive confirm prompt)
 /todo archive [filter]   archive summary, or filtered slice (project:X / text:Y)
+/todo health              bloat report across all boxes + flags + suggestions
 /todo clean              clear all done (deprecated — use prune)
 /todo path               show the store file path
 ```
@@ -107,6 +131,8 @@ first load after upgrade.
 | `park` | `id` | defer (parked — not injected) |
 | `prune` | `ageDays?`, `all?` | move done/cancelled to archive (reversible via restore) |
 | `restore` | `id` | bring an archived TODO back as open |
+| `health` | (none) | bloat report across active/parked/archive + flags + suggestions |
+| `prune` (hard) | `hard:true`, `confirm:true`, `box?`, `olderThan?`, `project?`, `tag?` | PERMANENT deletion — the only irreversible action |
 | `clear` | `status?` (default `done`) | bulk-clear a status (deprecated — use prune) |
 
 Each TODO carries `id, text, project, tags, priority (low|med|high|critical), status (open|in_progress|parked|done|cancelled), source, createdAt, updatedAt, closedAt`.
@@ -127,7 +153,7 @@ Full design + decisions: [`docs/superpowers/specs/2026-07-20-lifecycle-boxes-pru
 |---|---|---|
 | `TODO_DIR` | `~/.pi/agent/todo/` | override the store folder (tests / multiple profiles) |
 
-Run the store tests: `npm test` (95/95 across `todo-store` + `todo-archive` + `todo-config` + `todo-migrate`).
+Run the store tests: `npm test` (129/129 across `todo-store` + `todo-archive` + `todo-config` + `todo-migrate` + `todo-health` + `todo-hard-prune`).
 
 ## Security
 

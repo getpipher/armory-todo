@@ -31,7 +31,7 @@ extensions/   # pi extension — todo tool (model-callable) + /todo slash comman
 src/          # todo-store (live CRUD + parked + list), archive (prune + restore + summary),
               # config (prune/health thresholds), migrate (v1→v2), paths (TODO_DIR resolution)
 scripts/      # build/release helpers
-test/         # todo-store + todo-archive + todo-config + todo-migrate tests
+test/         # todo-store + todo-archive + todo-config + todo-migrate + todo-health + todo-hard-prune tests
 docs/         # todo-SPEC.md (v0.1.0) + superpowers/specs + superpowers/plans (v0.2.0)
 ```
 
