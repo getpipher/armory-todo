@@ -1,8 +1,10 @@
 // Pure, pi-independent TODO store for armory-todo.
 //
-// A global, cross-session TODO list backed by a single JSON file on disk
-// (default ~/.pi/agent/todo.json; override with TODO_STORE_PATH for tests).
-// Deliberately NOT pi session-entries — this survives across all sessions.
+// A global, cross-session TODO list backed by a JSON file under TODO_DIR
+// (default ~/.pi/agent/todo/todo.json). The live store holds open, in_progress,
+// and parked todos; done/cancelled are moved to todo-archive.json by `prune`
+// (see archive.ts). v1 single-file stores at ~/.pi/agent/todo.json are
+// migrated into the folder on first load (see migrate.ts).
 //
 // Kept free of any pi/typebox imports so it can be unit-tested standalone.
 
@@ -14,11 +16,9 @@ import {
   renameSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
-import { homedir } from "node:os";
-
-const DEFAULT_PATH = join(homedir(), ".pi", "agent", "todo.json");
-const STORE_PATH = process.env.TODO_STORE_PATH || DEFAULT_PATH;
+import { dirname } from "node:path";
+import { getLivePath, getTodoDir, getLegacyPath } from "./paths.ts";
+import { migrateIfNeeded } from "./migrate.ts";
 
 export type Priority = "low" | "med" | "high" | "critical";
 export type Status = "open" | "in_progress" | "parked" | "done" | "cancelled";
@@ -43,7 +43,7 @@ export interface Todo {
 }
 
 export interface Store {
-  version: 1;
+  version: 2;
   updatedAt: string;
   todos: Todo[];
 }
@@ -87,30 +87,37 @@ function genId(): string {
 }
 
 function emptyStore(): Store {
-  return { version: 1, updatedAt: now(), todos: [] };
+  return { version: 2, updatedAt: now(), todos: [] };
 }
 
 export function getStorePath(): string {
-  return STORE_PATH;
+  return getLivePath();
 }
 
-/** Load the store from disk. On corruption, back up the bad file and start fresh. */
+/** Load the live store from disk. Runs v1→v2 migration first — but ONLY when
+ *  using the default TODO_DIR (not overridden by TODO_DIR env, e.g. tests).
+ *  On corruption, backs up the bad file and starts fresh. */
 export function loadStore(): Store {
-  if (!existsSync(STORE_PATH)) return emptyStore();
+  if (!process.env.TODO_DIR) {
+    migrateIfNeeded({ todoDir: getTodoDir(), legacyPath: getLegacyPath() });
+  }
+  const path = getLivePath();
+  if (!existsSync(path)) return emptyStore();
   try {
-    const raw = readFileSync(STORE_PATH, "utf8");
+    const raw = readFileSync(path, "utf8");
     const parsed = JSON.parse(raw) as Store;
     if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.todos)) {
       throw new Error("invalid store shape");
     }
-    if (parsed.version !== 1) {
-      // Future: migrate. v1 only — reset on unknown version with backup.
-      throw new Error("unsupported store version: " + String(parsed.version));
+    if (parsed.version !== 2) {
+      // v1 → v2: accept it (the migration moved the file), just bump the version in memory.
+      // The data shape is otherwise identical; parked status is new but old todos won't have it.
+      parsed.version = 2;
     }
     return parsed;
   } catch {
     try {
-      renameSync(STORE_PATH, `${STORE_PATH}.bad-${Date.now()}`);
+      renameSync(path, `${path}.bad-${Date.now()}`);
     } catch {
       // best-effort backup; swallow
     }
@@ -121,16 +128,17 @@ export function loadStore(): Store {
 /** Atomic, 0600 write. */
 export function saveStore(store: Store): void {
   store.updatedAt = now();
-  const dir = dirname(STORE_PATH);
+  const path = getLivePath();
+  const dir = dirname(path);
   mkdirSync(dir, { recursive: true });
-  const tmp = `${STORE_PATH}.tmp`;
+  const tmp = `${path}.tmp`;
   writeFileSync(tmp, JSON.stringify(store, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
   try {
     chmodSync(tmp, 0o600);
   } catch {
     // some filesystems ignore mode bits; not fatal
   }
-  renameSync(tmp, STORE_PATH);
+  renameSync(tmp, path);
 }
 
 function assertPriority(p: unknown): asserts p is Priority {
