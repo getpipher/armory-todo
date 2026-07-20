@@ -47,6 +47,7 @@ export class TodoPanel extends Container {
   private editMode = false;
   private editInput: Input | null = null;
   private editId = "";
+  private settingsList: SettingsList | null = null;
   private config: TodoConfig;
   private healthFlags: string[] = [];
 
@@ -84,6 +85,7 @@ export class TodoPanel extends Container {
     const keep = this.children.slice(0, 2);
     this.children.length = 0;
     this.children.push(...keep);
+    this.settingsList = null; // cleared; renderConfigBox sets it if active
 
     const accent = (s: string) => this.theme.fg("accent", s);
     const tabs = BOXES.map((b) => b === this.currentBox ? this.theme.fg("accent", this.theme.bold(`[${b}]`)) : this.theme.fg("dim", b)).join("  ");
@@ -241,6 +243,7 @@ export class TodoPanel extends Container {
       sl.updateValue(id, this.configValueDisplay(id));
     },
     () => { this.onDone(); });
+    this.settingsList = sl;
     this.addChild(sl);
   }
 
@@ -320,7 +323,11 @@ export class TodoPanel extends Container {
     if (matchesKey(data, "tab")) { this.switchBox(1); return; }
     if (matchesKey(data, "shift+tab")) { this.switchBox(-1); return; }
     if (matchesKey(data, "up") || matchesKey(data, "down") || matchesKey(data, "enter") || matchesKey(data, "return")) {
-      this.selectList.handleInput(data);
+      if (this.currentBox === "config" && this.settingsList) {
+        this.settingsList.handleInput(data);
+      } else {
+        this.selectList.handleInput(data);
+      }
       this.invalidate();
       return;
     }
