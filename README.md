@@ -167,7 +167,7 @@ Full design + decisions: [`docs/superpowers/specs/2026-07-20-lifecycle-boxes-pru
 |---|---|---|
 | `TODO_DIR` | `~/.pi/agent/todo/` | override the store folder (tests / multiple profiles) |
 
-Run the store tests: `npm test` (147/147 across 7 suites).
+Run the store tests: `npm test` (151/151 across 7 suites).
 
 ## Security
 

@@ -1,5 +1,10 @@
 # SPEC — `armory-todo` (global, cross-session TODO for pi)
 
+> **⚠ SUPERSEDED (v0.2.0):** This is the original v0.1.0 design spec. For the v0.2.0 lifecycle-boxes
+> design (active/parked/archive, prune, health, hard-prune, interactive TUI panel), see
+> [`docs/superpowers/specs/2026-07-20-lifecycle-boxes-prune-design.md`](superpowers/specs/2026-07-20-lifecycle-boxes-prune-design.md).
+> This doc is kept for historical context (the v0.1.0 architecture + decisions).
+
 **Repo:** `getpipher/armory` (`~/local-dev/armory`) · **Extension file:** `extensions/todo.ts`
 **Status:** Draft (2026-06-23) — pending RECTOR sign-off on the flagged Decisions.
 **Related:** closes the "cross-session TODO" pain recorded in `~/Documents/secret/claude-strategy/pi/session-handoff-2026-06-23.md` (Next steps #7 is the canonical TODO this spec exists to never lose again).
