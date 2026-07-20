@@ -10,7 +10,7 @@ import { dirname } from "node:path";
 import { getArchivePath } from "./paths.ts";
 import type { Todo } from "./todo-store.ts";
 import { loadConfig } from "./config.ts";
-import { loadStore, saveStore } from "./todo-store.ts";
+import { loadStore, saveStore, TodoError } from "./todo-store.ts";
 
 export interface ArchiveStore {
   version: 2;
@@ -116,4 +116,23 @@ export function pruneTodos(opts: PruneInput = {}): PruneResult {
   saveArchive(archive);
 
   return { moved: moved.length, ids: moved.map((t) => t.id) };
+}
+
+/**
+ * Move an archived todo back to the live store as `open` (closedAt cleared).
+ * Throws TodoError if the id is not in the archive. Both stores are saved.
+ */
+export function restoreTodo(id: string): Todo {
+  const archive = loadArchive();
+  const idx = archive.todos.findIndex((t) => t.id === id);
+  if (idx < 0) throw new TodoError(`not in archive: ${id}`);
+  const [todo] = archive.todos.splice(idx, 1);
+  const live = loadStore();
+  todo.status = "open";
+  todo.closedAt = null;
+  todo.updatedAt = now();
+  live.todos.push(todo);
+  saveStore(live);
+  saveArchive(archive);
+  return todo;
 }

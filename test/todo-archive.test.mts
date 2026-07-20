@@ -83,6 +83,30 @@ deleteTodo(c1.id);
 const result3 = pruneTodos({ all: true });
 ok("prune --all also moved cancelled", result3.moved >= 1);
 
+// --- restore: archive → live as open ---
+const { restoreTodo } = await import("../src/archive.ts");
+
+// archive currently has the old-done + fresh-done + cancelled from earlier
+const before = loadArchive();
+const archId = before.todos[0]!.id;
+const restored = restoreTodo(archId);
+eq("restore sets status open", restored.status, "open");
+eq("restore clears closedAt", restored.closedAt, null);
+const archAfterRestore = loadArchive();
+ok("restore removed from archive", !archAfterRestore.todos.some((t) => t.id === archId));
+const liveAfterRestore = loadStore();
+ok("restore added to live", liveAfterRestore.todos.some((t) => t.id === archId));
+ok("restored is open in live", liveAfterRestore.todos.find((t) => t.id === archId)!.status === "open");
+
+// --- restore of a non-archived id errors ---
+let threw = false;
+try {
+  restoreTodo("td-does-not-exist");
+} catch {
+  threw = true;
+}
+ok("restore non-archived id throws", threw);
+
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
