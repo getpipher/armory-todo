@@ -28,19 +28,26 @@ pi install npm:@getpipher/armory-todo            # from npm (scoped)
 
 ```
 extensions/   # pi extension — todo tool (model-callable) + /todo slash command + auto-inject
-src/          # todo store (disk-backed JSON)
+src/          # todo-store (live CRUD + parked + list), archive (prune + restore + summary),
+              # config (prune/health thresholds), migrate (v1→v2), paths (TODO_DIR resolution)
 scripts/      # build/release helpers
-test/         # todo-store tests
+test/         # todo-store + todo-archive + todo-config + todo-migrate + todo-health + todo-hard-prune + panel-data tests
+docs/         # todo-SPEC.md (v0.1.0) + superpowers/specs + superpowers/plans (v0.2.0)
 ```
 
 ## Common Commands
 
 ```bash
-node test/todo-store.test.mts   # run tests
+node test/todo-store.test.mts     # live store tests (42)
+node test/todo-archive.test.mts   # archive + prune + restore + list (32)
+node test/todo-config.test.mts    # config defaults + corrupt recovery (15)
+node test/todo-migrate.test.mts   # v1→v2 migration (6)
+# or run all: for t in todo-store todo-archive todo-config todo-migrate; do node test/$t.test.mts; done
 ```
 
 ## Notes
 
-- Backed by `~/.pi/agent/todo.json` (global across all pi sessions).
+- Backed by `~/.pi/agent/todo/` (folder layout since v0.2.0): `todo.json` (active + parked), `todo-archive.json` (done + cancelled — sealed history), `todo.config.json` (prune ages + health thresholds). Global across all pi sessions. A v1 single-file `~/.pi/agent/todo.json` is migrated automatically on first load.
+- Lifecycle boxes (v0.2.0): active (open/in_progress, auto-injected) / parked (deferred, NOT injected) / archive (done/cancelled, NOT injected). `prune` moves done/cancelled to the archive (reversible via `restore`). Nothing is deleted by default.
 - Never put secrets in a TODO — the text reaches the model provider.
-- Open follow issue: project-scope management + self-awareness caps (anti-bloat) — see gh issue #1.
+- Open follow issue: project-scope management + self-awareness caps (anti-bloat) — see gh issue #1. SPEC-2 (health + hard-prune) + SPEC-3 (interactive /todo TUI panel) + Workstream B (title/notes split) + Workstream C (preventive caps) remain.

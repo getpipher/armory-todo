@@ -41,22 +41,95 @@ Then restart pi (or `/reload`). Or add to `~/.pi/agent/settings.json`:
 { "packages": ["npm:@getpipher/armory-todo"] }
 ```
 
+## Lifecycle boxes (v0.2.0)
+
+TODOs live in one of three states, only one of which hits the agent context:
+
+| Box | Status(es) | Auto-injected? | Recoverable? |
+|---|---|:---:|:---:|
+| **Active** | `open`, `in_progress` | ✅ Yes (capped 15) | n/a |
+| **Parked** | `parked` | ❌ No | ✅ `update --status open` |
+| **Archive** | `done`, `cancelled` | ❌ No | ✅ `restore <id>` |
+
+**Pruning:** `prune` (default: done/cancelled older than 7 days) moves finished
+todos from the live file to `todo-archive.json` — nothing is deleted. `prune --all`
+ignores age. `restore <id>` brings an archived todo back as `open`.
+
+The only irreversible action is `prune --hard` (hard-prune) — it requires an
+explicit `confirm: true` and is always user-confirmed. See **Self-awareness**
+below.
+
+**Storage layout:**
+
+```
+~/.pi/agent/todo/
+  todo.json              # active + parked
+  todo-archive.json      # done + cancelled (sealed history)
+  todo.config.json       # prune ages + health thresholds
+```
+
+A v1 single-file store at `~/.pi/agent/todo.json` is migrated automatically on
+first load after upgrade.
+
+## Self-awareness: health + hard-prune
+
+**`health`** reports bloat across all three boxes — counts, stale items, and
+actionable suggestions (e.g. "archive: 41 items older than 180d → consider
+`prune --hard --box archive --older-than 180 --confirm`"). On `session_start`,
+if any bloat flags are detected, the startup notify appends a `⚠ N bloat
+signals` nudge.
+
+**`prune --hard`** is the **only irreversible action** — it permanently deletes
+todos. It's gated three ways:
+1. **Tool-level:** `confirm: true` is required in the tool call; without it the
+   action refuses with a clear message.
+2. **Prompt-level:** the agent is instructed to always run `health` first,
+   surface the report + the exact proposed command, and wait for an explicit
+   user "yes" before passing `confirm: true`.
+3. **Slash-level:** `/todo prune --hard` prompts an interactive `ctx.ui.confirm`
+   yes/no dialog before executing.
+
+Everything else in armory-todo is reversible. `prune --hard` is the one
+irreversible escape hatch, always user-confirmed.
+
+## Interactive panel (SPEC-3)
+
+Run `/todo` (no arg) in a TUI session to open the interactive triage panel:
+
+- **Box tabs** (Tab / Shift+Tab): Active · Parked · Archive · Config
+- **Filter input**: type to search by text (live filter)
+- **SelectList**: arrow keys navigate, Enter selects
+- **Action submenu** (on Enter): Complete / Park / Re-activate / Restore / Edit text / Delete
+- **Archive box**: summary-first (counts by project + month) → Enter on a bucket to drill down
+- **Config box**: SettingsList with prune ages + health thresholds — edit live, persists to `todo.config.json`
+- **Escape**: exit the panel
+
+Typed subcommands (`/todo park <id>`, `/todo prune`, etc.) all still work alongside the panel. Non-TUI sessions (`pi -p`, RPC) fall back to the text list.
+
 ## Usage
 
 **Say it naturally** — the model calls the `todo` tool:
 
 > “put this in our TODO: decouple global rules into AGENTS.md”
 > “show me the TODO” → “mark td-… done”
+> “park td-… for now” → later: “restore td-…”
+> “prune the done todos”
 
 **Slash command** for quick human triage:
 
 ```
 /todo                    list open + in-progress TODOs
-/todo all                include done/cancelled
+/todo all                include parked/done/cancelled
 /todo add <text>         quick add (priority: med)
 /todo done <id>          mark done
 /todo rm <id>            cancel (tombstone)
-/todo clean              clear all done
+/todo park <id>          defer (parked — not injected, recoverable)
+/todo restore <id>       bring an archived todo back as open
+/todo prune [--all]      move done/cancelled to archive (reversible)
+/todo prune --hard        permanent deletion (interactive confirm prompt)
+/todo archive [filter]   archive summary, or filtered slice (project:X / text:Y)
+/todo health              bloat report across all boxes + flags + suggestions
+/todo clean              clear all done (deprecated — use prune)
 /todo path               show the store file path
 ```
 
@@ -64,31 +137,37 @@ Then restart pi (or `/reload`). Or add to `~/.pi/agent/settings.json`:
 
 | action | params | effect |
 |---|---|---|
-| `list` | `statusFilter?`, `projectFilter?`, `tagFilter?` | matching TODOs (default: open + in_progress) |
+| `list` | `statusFilter?`, `projectFilter?`, `tagFilter?`, `text?`, `since?`, `before?`, `limit?`, `page?`, `archived?` | matching TODOs (default: open + in_progress). `archived:true` queries the archive — bare call returns a summary, filters return paginated slices |
 | `add` | `text`, `project?`, `tags?`, `priority?`, `source?` | create a TODO |
-| `update` | `id`, `text?`, `priority?`, `status?`, `project?`, `tags?` | edit a TODO |
+| `update` | `id`, `text?`, `priority?`, `status?`, `project?`, `tags?` | edit a TODO (set `status: parked` to defer) |
 | `complete` | `id` | mark done |
 | `delete` | `id` | cancel (tombstone) |
-| `clear` | `status?` (default `done`) | bulk-clear a status |
+| `park` | `id` | defer (parked — not injected) |
+| `prune` | `ageDays?`, `all?` | move done/cancelled to archive (reversible via restore) |
+| `restore` | `id` | bring an archived TODO back as open |
+| `health` | (none) | bloat report across active/parked/archive + flags + suggestions |
+| `prune` (hard) | `hard:true`, `confirm:true`, `box?`, `olderThan?`, `project?`, `tag?` | PERMANENT deletion — the only irreversible action |
+| `clear` | `status?` (default `done`) | bulk-clear a status (deprecated — use prune) |
 
-Each TODO carries `id, text, project, tags, priority (low|med|high|critical), status (open|in_progress|done|cancelled), source, createdAt, updatedAt, closedAt`.
+Each TODO carries `id, text, project, tags, priority (low|med|high|critical), status (open|in_progress|parked|done|cancelled), source, createdAt, updatedAt, closedAt`.
 
 ## How it works
 
-- **Disk store** — `~/.pi/agent/todo.json`, atomic `0600` writes, corrupt-file auto-recovery, `version: 1` schema. Not pi session entries, so it outlives any conversation.
-- **`todo` tool** — model CRUD (above).
+- **Disk store** — `~/.pi/agent/todo/` folder: `todo.json` (live: active + parked), `todo-archive.json` (sealed: done + cancelled), `todo.config.json` (prune ages + health thresholds). Atomic `0600` writes, corrupt-file auto-recovery, `version: 2` schema. Not pi session entries, so it outlives any conversation.
+- **`todo` tool** — model CRUD + lifecycle (above).
 - **`/todo` command** — human triage (above).
-- **Auto-inject** — on every `before_agent_start`, a compact `## Open TODOs (N)` block (titles + ids, capped at 15, sorted by priority) is appended to the system prompt, so the agent starts every turn already aware of pending work. Mutations refresh it on the next turn.
+- **Auto-inject** — on every `before_agent_start`, a compact `## Open TODOs (N)` block (titles + ids, capped at 15, sorted by priority) is appended to the system prompt, so the agent starts every turn already aware of pending work. Only `open` + `in_progress` are injected — `parked` and archived todos are excluded (the lifecycle-box boundary). Mutations refresh it on the next turn.
+- **Archive query** — `list` with `archived:true` is summary-first (counts by project + month) then filtered/paginated on demand, so a large archive never bloats a single query.
 
-Full design + decisions: [`docs/todo-SPEC.md`](docs/todo-SPEC.md).
+Full design + decisions: [`docs/superpowers/specs/2026-07-20-lifecycle-boxes-prune-design.md`](docs/superpowers/specs/2026-07-20-lifecycle-boxes-prune-design.md). Original v0.1.0 spec: [`docs/todo-SPEC.md`](docs/todo-SPEC.md).
 
 ## Configuration
 
 | env var | default | purpose |
 |---|---|---|
-| `TODO_STORE_PATH` | `~/.pi/agent/todo.json` | override the store location (tests / multiple profiles) |
+| `TODO_DIR` | `~/.pi/agent/todo/` | override the store folder (tests / multiple profiles) |
 
-Run the store tests: `npm test` (24/24).
+Run the store tests: `npm test` (147/147 across 7 suites).
 
 ## Security
 
