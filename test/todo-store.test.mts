@@ -7,6 +7,7 @@ import { join } from "node:path";
 
 const tmp = mkdtempSync(join(tmpdir(), "armory-todo-"));
 process.env.TODO_STORE_PATH = join(tmp, "todo.json");
+process.env.TODO_DIR = tmp;
 
 let passed = 0;
 let failed = 0;
@@ -22,6 +23,15 @@ function ok(name: string, cond: boolean, extra = ""): void {
 function eq<T>(name: string, got: T, want: T): void {
   ok(name, got === want, `(got ${JSON.stringify(got)} want ${JSON.stringify(want)})`);
 }
+
+// --- paths resolve under TODO_DIR ---
+const { getTodoDir, getLivePath, getArchivePath, getConfigPath, getLegacyPath } =
+  await import("../src/paths.ts");
+eq("getTodoDir is TODO_DIR", getTodoDir(), tmp);
+eq("live path under TODO_DIR", getLivePath(), join(tmp, "todo.json"));
+eq("archive path under TODO_DIR", getArchivePath(), join(tmp, "todo-archive.json"));
+eq("config path under TODO_DIR", getConfigPath(), join(tmp, "todo.config.json"));
+ok("legacy path is the real ~/.pi/agent/todo.json", getLegacyPath().endsWith(join(".pi", "agent", "todo.json")));
 
 // fresh import after env set
 const { addTodo, listTodos, updateTodo, completeTodo, deleteTodo, clearTodos, renderOpenBlock, loadStore } =
