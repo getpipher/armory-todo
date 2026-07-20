@@ -34,8 +34,10 @@ import {
   getStorePath,
 } from "../src/todo-store";
 import { pruneTodos, restoreTodo, listArchived, archiveSummary } from "../src/archive";
+import { healthReport } from "../src/health";
+import { hardPrune } from "../src/hard-prune";
 
-const ACTIONS = ["list", "add", "update", "complete", "delete", "clear", "park", "prune", "restore"] as const;
+const ACTIONS = ["list", "add", "update", "complete", "delete", "clear", "park", "prune", "restore", "health"] as const;
 
 function fmt(t: ReturnType<typeof listTodos>[number]): string {
   const tag = t.project ? ` (${t.project})` : "";
@@ -48,9 +50,16 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     try {
       const open = listTodos();
-      if (ctx.hasUI) {
-        ctx.ui.notify(`armory-todo: ${open.length} open TODO${open.length === 1 ? "" : "s"}`, "info");
+      let msg = `armory-todo: ${open.length} open TODO${open.length === 1 ? "" : "s"}`;
+      try {
+        const report = healthReport();
+        if (report.flags.length > 0) {
+          msg += ` — ⚠ ${report.flags.length} bloat signal${report.flags.length === 1 ? "" : "s"} (run /todo health)`;
+        }
+      } catch {
+        // health check optional — don't crash the session notify
       }
+      if (ctx.hasUI) ctx.ui.notify(msg, "info");
     } catch {
       // store unavailable — never crash the session
     }
@@ -75,11 +84,12 @@ export default function (pi: ExtensionAPI) {
     label: "TODO",
     description:
       "Global cross-session TODO store (persists across ALL pi sessions, not just this one). " +
-      "Use when the user says 'put this in our TODO', 'show me the TODO', 'mark <id> done', 'park <id>', 'prune', 'restore <id>', etc. " +
+      "Use when the user says 'put this in our TODO', 'show me the TODO', 'mark <id> done', 'park <id>', 'prune', 'restore <id>', 'how is my todo hygiene?', etc. " +
       "Open TODOs are auto-injected each turn; parked todos are NOT injected (deferred/someday). " +
       "Done/cancelled todos are moved to an archive by `prune` (reversible via `restore`). " +
+      "`prune --hard` (hard:true, confirm:true) is the ONLY irreversible action — always run `health` first, surface the report + proposed command, and wait for explicit user confirmation. " +
       "Never put secrets in a TODO — the text reaches the model provider.",
-    promptSnippet: "Read/update the global cross-session TODO list (active / parked / archive)",
+    promptSnippet: "Read/update the global cross-session TODO list (active / parked / archive) + bloat health",
     promptGuidelines: [
       "Use todo (action:'list') when the user asks 'show me the TODO' / 'what's pending'.",
       "Use todo (action:'add', text, project?, tags?, priority?, source?) when the user says 'put this in our TODO'.",
@@ -88,6 +98,8 @@ export default function (pi: ExtensionAPI) {
       "Use todo (action:'prune') to move done/cancelled todos to the archive (reversible); (action:'prune', all:true) to prune all regardless of age.",
       "Use todo (action:'restore', id) to bring an archived TODO back as open.",
       "Use todo (action:'list', archived:true) to query the archive — bare call returns a summary; add a filter (project/text/since) for specific items.",
+      "Use todo (action:'health') to check bloat across all boxes — returns counts + flags + suggestions. Run this when the user asks about hygiene/bloat or before any hard-prune.",
+      "Use todo (action:'prune', hard:true, confirm:true, box?, olderThan?) for PERMANENT deletion — the only irreversible action. ALWAYS: run `health` first, show the user the report + the exact proposed command, and wait for an explicit 'yes' before passing confirm:true. Never hard-prune without explicit user confirmation.",
     ],
     parameters: Type.Object({
       action: StringEnum(ACTIONS),
@@ -109,6 +121,11 @@ export default function (pi: ExtensionAPI) {
       // prune options
       ageDays: Type.Optional(Type.Number({ description: "prune: closedAt older than this many days (default from config)" })),
       all: Type.Optional(Type.Boolean({ description: "prune: ignore age, move all done/cancelled" })),
+      // hard-prune options (SPEC-2)
+      hard: Type.Optional(Type.Boolean({ description: "prune: if true, execute a HARD prune (permanent deletion). Requires confirm:true. The only irreversible action." })),
+      confirm: Type.Optional(Type.Boolean({ description: "hard-prune: must be true to execute. Always surface the health report + proposed command and wait for explicit user confirmation first." })),
+      box: Type.Optional(StringEnum(["archive", "active", "parked"] as const, { description: "hard-prune: which box to target (default archive)" })),
+      olderThan: Type.Optional(Type.Number({ description: "hard-prune: delete items older than this many days (by closedAt for archive, updatedAt for active/parked)" })),
     }),
     async execute(_toolCallId, params) {
       try {
@@ -194,8 +211,30 @@ export default function (pi: ExtensionAPI) {
             return { content: [{ type: "text" as const, text: `Parked ${t.id}: ${t.text}` }] };
           }
           case "prune": {
+            if (params.hard) {
+              const res = hardPrune({
+                confirm: params.confirm === true,
+                box: params.box,
+                olderThan: params.olderThan,
+                project: params.projectFilter,
+                tag: params.tagFilter,
+              });
+              return { content: [{ type: "text" as const, text: res.message + (res.refused ? "" : ` Deleted: ${res.ids.join(", ") || "(none)"}`) }] };
+            }
             const res = pruneTodos({ ageDays: params.ageDays, all: params.all });
             return { content: [{ type: "text" as const, text: `Pruned ${res.moved} todo${res.moved === 1 ? "" : "s"} to archive: ${res.ids.join(", ") || "(none)"}` }] };
+          }
+          case "health": {
+            const report = healthReport();
+            const lines = [
+              `## TODO Health Report`,
+              `active:  ${report.active.open} open + ${report.active.in_progress} in_progress (${report.active.stale_30d} stale)`,
+              `parked:  ${report.parked.count} (${report.parked.stale_60d} stale)`,
+              `archive: ${report.archive.count} (${report.archive.older_180d} old)`,
+              report.flags.length ? `flags: ${report.flags.join(", ")}` : "flags: (none — healthy)",
+              ...report.suggestions.map((s) => `  → ${s}`),
+            ];
+            return { content: [{ type: "text" as const, text: lines.join("\n") }] };
           }
           case "restore": {
             if (!params.id) return { content: [{ type: "text" as const, text: "Error: `id` is required for restore." }] };
@@ -220,8 +259,8 @@ export default function (pi: ExtensionAPI) {
     description:
       "Global cross-session TODO list. " +
       "/todo · /todo all · /todo add <text> · /todo done <id> · /todo rm <id> · " +
-      "/todo park <id> · /todo restore <id> · /todo prune [--all] · " +
-      "/todo archive [project:X|text:Y] · /todo clean · /todo path",
+      "/todo park <id> · /todo restore <id> · /todo prune [--all|--hard --box <b> --older-than <d>] · " +
+      "/todo archive [project:X|text:Y] · /todo health · /todo clean · /todo path",
     handler: async (args, ctx) => {
       const a = (args ?? "").trim();
       const [sub, ...rest] = a.split(/\s+/);
@@ -268,9 +307,41 @@ export default function (pi: ExtensionAPI) {
           return;
         }
         if (sub === "prune") {
+          const isHard = rest.includes("--hard");
+          if (isHard) {
+            const boxIdx = rest.indexOf("--box");
+            const olderIdx = rest.indexOf("--older-than");
+            const projIdx = rest.indexOf("--project");
+            const box = boxIdx >= 0 ? rest[boxIdx + 1] : undefined;
+            const olderThan = olderIdx >= 0 ? Number(rest[olderIdx + 1]) : undefined;
+            const project = projIdx >= 0 ? rest[projIdx + 1] : undefined;
+            const preview = hardPrune({ confirm: false, box: box as any, olderThan, project });
+            if (ctx.hasUI) {
+              const yes = await ctx.ui.confirm(
+                `HARD PRUNE (permanent deletion)\n${preview.message}\nBox: ${box ?? "archive"}${olderThan ? `, older than ${olderThan}d` : ""}${project ? `, project: ${project}` : ""}\n\nProceed?`,
+              );
+              if (!yes) { ctx.ui.notify("Hard-prune cancelled.", "info"); return; }
+            }
+            const res = hardPrune({ confirm: true, box: box as any, olderThan, project });
+            if (ctx.hasUI) ctx.ui.notify(res.message + ` Deleted: ${res.ids.join(", ") || "(none)"}`, res.refused ? "warning" : "info");
+            return;
+          }
           const all = rest.includes("--all");
           const res = pruneTodos({ all });
           if (ctx.hasUI) ctx.ui.notify(`Pruned ${res.moved} todo${res.moved === 1 ? "" : "s"} to archive: ${res.ids.join(", ") || "(none)"}`, "info");
+          return;
+        }
+        if (sub === "health") {
+          const report = healthReport();
+          const lines = [
+            `TODO Health:`,
+            `  active:  ${report.active.open} open + ${report.active.in_progress} in_progress (${report.active.stale_30d} stale)`,
+            `  parked:  ${report.parked.count} (${report.parked.stale_60d} stale)`,
+            `  archive: ${report.archive.count} (${report.archive.older_180d} old)`,
+            report.flags.length ? `  ⚠ ${report.flags.join(", ")}` : "  ✅ healthy",
+            ...report.suggestions.map((s) => `  → ${s}`),
+          ];
+          if (ctx.hasUI) ctx.ui.notify(lines.join("\n"), "info");
           return;
         }
         if (sub === "archive") {
