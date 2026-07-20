@@ -260,6 +260,7 @@ export default function (pi: ExtensionAPI) {
               `active:  ${report.active.open} open + ${report.active.in_progress} in_progress (${report.active.stale_30d} stale)`,
               `parked:  ${report.parked.count} (${report.parked.stale_60d} stale)`,
               `archive: ${report.archive.count} (${report.archive.older_180d} old)`,
+              `notes:   ${report.notesBytes.total}B total · max ${report.notesBytes.max}B · avg ${report.notesBytes.avg}B`,
               report.flags.length ? `flags: ${report.flags.join(", ")}` : "flags: (none — healthy)",
               ...report.suggestions.map((s) => `  → ${s}`),
             ];
@@ -368,6 +369,7 @@ export default function (pi: ExtensionAPI) {
             `  active:  ${report.active.open} open + ${report.active.in_progress} in_progress (${report.active.stale_30d} stale)`,
             `  parked:  ${report.parked.count} (${report.parked.stale_60d} stale)`,
             `  archive: ${report.archive.count} (${report.archive.older_180d} old)`,
+            `  notes:   ${report.notesBytes.total}B total · max ${report.notesBytes.max}B · avg ${report.notesBytes.avg}B`,
             report.flags.length ? `  ⚠ ${report.flags.join(", ")}` : "  ✅ healthy",
             ...report.suggestions.map((s) => `  → ${s}`),
           ];
