@@ -167,6 +167,64 @@ addTodo({ title: "u2", project: "pi" });                 // pi open=1 (at cap ag
 notThrows("un-park into capped project ok (reactivation not blocked)", () => updateTodo(u.id, { status: "open" }));
 eq("un-park persisted (now 2 open, over cap -- allowed)", loadStoreFn().todos.filter((t) => t.project === "pi" && t.status === "open").length, 2);
 
+// ===== renderOpenBlock cap-aware truncation =====
+const { renderOpenBlock } = await import("../src/todo-store.ts");
+const { loadConfig, saveConfig } = await import("../src/config.ts");
+const { setProjectMaxOpen: setMax } = await import("../src/registry.ts");
+
+function setMaxOpen(project: string, max: number | null): void { const r = loadRegistry(); setMax(r, project, max); saveRegistry(r); }
+function setGlobalCap(cap: number): void { saveConfig({ ...loadConfig(), health: { ...loadConfig().health, activeMaxOpen: cap } }); }
+
+// under cap -> row list, no summary, no overflow line
+resetStore();
+setGlobalCap(15);
+for (let i = 0; i < 3; i++) addTodo({ title: `t${i}`, project: "pi" });
+const under = renderOpenBlock();
+ok("under cap: header present", under.startsWith("## Open TODOs (3)"));
+ok("under cap: row list (no summary)", under.includes("- [td-"));
+ok("under cap: no over-budget marker", !under.includes("over budget"));
+
+// over cap -> summary mode
+resetStore();
+setGlobalCap(2);
+setMaxOpen("pi", 1);
+addTodo({ title: "a", project: "pi" });          // pi open=1 (at cap)
+addTodo({ title: "b", project: "other" });       // other uncapped
+addTodo({ title: "c", project: "other" });       // 3 actionable total > activeMaxOpen 2 -> over budget
+// make pi over its own cap: bump pi to 2 via direct store seed (add would throw)
+saveStore({ version: 3, updatedAt: new Date().toISOString(), todos: [
+  ...loadStoreFn().todos,
+  { id: "td-extra", title: "extra", notes: "", project: "pi", tags: [], priority: "med", status: "open", source: "", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), closedAt: null },
+] });
+const overBlk = renderOpenBlock();
+ok("over cap: header has over-budget marker", overBlk.includes("over budget (cap 2)"));
+ok("over cap: has actionable count line", overBlk.includes("open+in_progress"));
+ok("over cap: over-budget projects listed (pi 2/1)", overBlk.includes("pi 2/1"));
+ok("over cap: has pointer line", overBlk.includes("todo list") || overBlk.includes("/todo"));
+ok("over cap: no row list (no - [td-)", !overBlk.includes("- [td-"));
+
+// over global cap but NO project over its own cap -> summary without over-budget line
+resetStore();
+setGlobalCap(1);
+addTodo({ title: "a", project: "pi" });   // pi uncapped (no setMaxOpen)
+addTodo({ title: "b", project: "pi" });   // 2 actionable > activeMaxOpen 1, but pi has no maxOpen
+const overNoProj = renderOpenBlock();
+ok("over global, no per-project breach: over-budget header", overNoProj.includes("over budget (cap 1)"));
+ok("over global, no per-project breach: no 'over-budget:' line", !overNoProj.includes("over-budget:"));
+
+// custom max param overrides activeMaxOpen
+resetStore();
+setGlobalCap(50);
+for (let i = 0; i < 5; i++) addTodo({ title: `t${i}` });
+const viaParam = renderOpenBlock(3);   // 5 actionable > 3 -> summary
+ok("custom max param triggers summary", viaParam.includes("over budget (cap 3)"));
+const viaParamUnder = renderOpenBlock(10);  // 5 <= 10 -> row list
+ok("custom max param under -> row list", viaParamUnder.includes("- [td-"));
+
+// empty store -> unchanged
+resetStore();
+eq("empty store render", renderOpenBlock(), "## Open TODOs\n(none — no pending cross-session TODOs)\n");
+
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

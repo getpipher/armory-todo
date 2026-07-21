@@ -21,7 +21,7 @@ import { getLivePath, getTodoDir, getLegacyPath } from "./paths.ts";
 import { migrateIfNeeded, migrateV2ToV3 } from "./migrate.ts";
 import { loadConfig } from "./config.ts";
 import { loadRegistry, getProjectEntry } from "./registry.ts";
-import { checkNotesCap, checkProjectCap } from "./caps.ts";
+import { checkNotesCap, checkProjectCap, overBudgetProjects } from "./caps.ts";
 
 export type Priority = "low" | "med" | "high" | "critical";
 export type Status = "open" | "in_progress" | "parked" | "done" | "cancelled";
@@ -320,17 +320,43 @@ export function clearTodos(status: Status = "done"): number {
   return removed;
 }
 
-/** Compact markdown summary of open + in_progress TODOs for system-prompt injection. */
-export function renderOpenBlock(max = 15): string {
+/** Compact markdown summary of open + in_progress TODOs for system-prompt
+ *  injection. v0.5.0: cap-aware — when actionable > activeMaxOpen (from
+ *  config, or the `max` override), switches to a lean summary (counts +
+ *  over-budget projects + pointer) instead of the row list, keeping the
+ *  prompt bounded when bloated. Under cap → the familiar row list (capped
+ *  at activeMaxOpen rows). */
+export function renderOpenBlock(max?: number): string {
   const todos = listTodos(); // actionable set, sorted
   if (todos.length === 0) return "## Open TODOs\n(none — no pending cross-session TODOs)\n";
-  const shown = todos.slice(0, max);
-  const lines = shown.map((t) => {
-    const tag = t.project ? ` (${t.project})` : "";
-    const pin = t.status === "in_progress" ? " ⏵" : "";
-    const dot = t.notes.trim() ? " •" : "";
-    return `- [${t.id}] (${t.priority})${pin}${dot} ${t.title}${tag}`;
-  });
-  const overflow = todos.length > max ? `\n- … +${todos.length - max} more (use \`todo list\`)` : "";
-  return `## Open TODOs (${todos.length})\n${lines.join("\n")}${overflow}\n`;
+  let cap: number;
+  try { cap = max ?? loadConfig().health.activeMaxOpen; } catch { cap = 15; }
+  if (todos.length <= cap) {
+    const shown = todos.slice(0, cap);
+    const lines = shown.map((t) => {
+      const tag = t.project ? ` (${t.project})` : "";
+      const pin = t.status === "in_progress" ? " ⏵" : "";
+      const dot = t.notes.trim() ? " •" : "";
+      return `- [${t.id}] (${t.priority})${pin}${dot} ${t.title}${tag}`;
+    });
+    return `## Open TODOs (${todos.length})\n${lines.join("\n")}\n`;
+  }
+  // over budget → lean summary (the anti-bloat path)
+  let over: { name: string; open: number; maxOpen: number }[] = [];
+  try {
+    const reg = loadRegistry();
+    over = overBudgetProjects(loadStore().todos, reg);
+  } catch {
+    // fail-open: a bad registry shouldn’t break injection
+  }
+  const projects = new Set(todos.map((t) => t.project.trim()).filter(Boolean));
+  const lines = [
+    `## Open TODOs (${todos.length}) — ⚠ over budget (cap ${cap})`,
+    `${todos.length} open+in_progress across ${projects.size} project${projects.size === 1 ? "" : "s"}`,
+  ];
+  if (over.length > 0) {
+    lines.push(`over-budget: ${over.map((p) => `${p.name} ${p.open}/${p.maxOpen}`).join(", ")}`);
+  }
+  lines.push("run `todo list` or `/todo` to see the full list");
+  return lines.join("\n") + "\n";
 }
