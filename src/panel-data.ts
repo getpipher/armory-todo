@@ -79,3 +79,34 @@ export function actionsForDoneTodo(d: DoneItem): { label: string; action: string
   if (d.location === "archive") acts.push({ label: "Restore (from archive)", action: "restore" });
   return acts;
 }
+
+// v0.4.0 — project overview (Projects tab) helpers.
+import type { ProjectsOverview } from "./projects.ts";
+
+/** Format the projects overview into SelectList items. Markers: OVER / typo. */
+export function projectOverviewToItems(o: ProjectsOverview): SelectItem[] {
+  return o.rows.map((r) => {
+    const cap = r.maxOpen !== null ? ` [max:${r.maxOpen}]` : "";
+    const over = r.over ? " OVER" : "";
+    const typo = r.typo ? " ?typo" : "";
+    const last = r.lastUpdated ? ` · ${r.lastUpdated.slice(0, 10)}` : " · (no live)";
+    return {
+      value: r.name,
+      label: `${r.name}  ${r.open}/${r.in_progress}/${r.parked}/${r.done} (total ${r.total})${cap}${over}${typo}${last}`,
+    };
+  });
+}
+
+/** Actions for a project row in the Projects tab. */
+export function actionsForProject(): { label: string; action: string }[] {
+  return [
+    { label: "Rename / merge", action: "rename" },
+    { label: "Set maxOpen", action: "setmax" },
+    { label: "Filter active to project", action: "filter" },
+  ];
+}
+
+/** The (no project) summary row — non-selectable (no submenu). */
+export function noProjectSummaryItem(o: ProjectsOverview): SelectItem {
+  return { value: "__noproject__", label: `(no project): ${o.noProject.count} total · ${o.noProject.open} open` };
+}

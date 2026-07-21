@@ -80,5 +80,34 @@ ok("done actions: no Restore for live", !actionsForDoneTodo(liveDone).some((a) =
 ok("done actions: Restore for archived", actionsForDoneTodo(archDone).some((a) => a.action === "restore"));
 ok("done actions: no Delete for done", !actionsForDoneTodo(liveDone).some((a) => a.action === "delete"));
 
+// --- v0.4.0: project overview items + actions + no-project summary ---
+const { projectOverviewToItems, actionsForProject, noProjectSummaryItem } = await import("../src/panel-data.ts");
+import type { ProjectsOverview } from "../src/projects.ts";
+
+const overview: ProjectsOverview = {
+  rows: [
+    { name: "pi", open: 3, in_progress: 0, parked: 0, done: 1, total: 4, maxOpen: 2, over: true, typo: false, lastUpdated: "2026-07-21T00:00:00.000Z" },
+    { name: "getpither", open: 0, in_progress: 0, parked: 0, done: 0, total: 1, maxOpen: null, over: false, typo: true, lastUpdated: "" },
+  ],
+  totalTodos: 5,
+  noProject: { count: 2, open: 1 },
+};
+
+const pitems = projectOverviewToItems(overview);
+ok("project item label has name", pitems[0]!.label.includes("pi"));
+ok("project item value is name", pitems[0]!.value === "pi");
+ok("OVER marker rendered", pitems[0]!.label.includes("OVER"));
+ok("typo marker rendered", pitems[1]!.label.includes("typo"));
+ok("maxOpen rendered", pitems[0]!.label.includes("max:2"));
+
+const pacts = actionsForProject();
+ok("project actions include Rename", pacts.some((a) => a.action === "rename"));
+ok("project actions include Set maxOpen", pacts.some((a) => a.action === "setmax"));
+ok("project actions include Filter", pacts.some((a) => a.action === "filter"));
+
+const np = noProjectSummaryItem(overview);
+ok("no-project summary value is __noproject__", np.value === "__noproject__");
+ok("no-project summary label has count", np.label.includes("2"));
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
