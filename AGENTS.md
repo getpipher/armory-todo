@@ -29,13 +29,16 @@ pi install npm:@getpipher/armory-todo            # from npm (scoped)
 ```
 extensions/   # pi extension — todo tool (model-callable, incl. get) + /todo slash command + auto-inject
 src/          # todo-store (live CRUD + title/notes + getTodo + list), archive (prune + restore + v3 migrate),
-              # config (prune/health thresholds), migrate (v1→v2 file move + v2→v3 schema), paths (TODO_DIR resolution),
-              # health (bloat diagnostics + notes-bytes), hard-prune (confirm-gated deletion),
-              # auto-prune (session_start age-gated prune), panel (interactive TUI + detail view + Done tab),
+              # config (prune/health thresholds + perProjectDefaultMax), migrate (v1→v2 file move + v2→v3 schema),
+              # paths (TODO_DIR resolution + getRegistryPath), health (bloat diagnostics + notes-bytes + per-project flags),
+              # hard-prune (confirm-gated deletion), auto-prune (session_start age-gated prune),
+              # registry (projects.json: load/save/reconcile/setMaxOpen/rename), levenshtein (typo edit-distance),
+              # projects (per-project scope overview), panel (interactive TUI + detail + Done + Projects tabs),
               # panel-data (pure helpers for panel)
 scripts/      # build/release helpers
-test/         # 9 suites: todo-store + todo-title-notes + todo-archive + todo-config + todo-migrate + todo-health + todo-hard-prune + todo-auto-prune + panel-data
-docs/         # todo-SPEC.md (v0.1.0, superseded) + superpowers/specs + superpowers/plans (v0.2.0 + v0.3.0)
+test/         # 11 suites: todo-store + todo-title-notes + todo-archive + todo-config + todo-migrate + todo-health
+              # + todo-hard-prune + todo-auto-prune + registry + projects + panel-data
+docs/         # todo-SPEC.md (v0.1.0, superseded) + superpowers/specs + superpowers/plans (v0.2.0 + v0.3.0 + v0.3.1 + v0.4.0)
 ```
 
 ## Common Commands
@@ -43,14 +46,16 @@ docs/         # todo-SPEC.md (v0.1.0, superseded) + superpowers/specs + superpow
 ```bash
 node test/todo-store.test.mts        # live store tests (44)
 node test/todo-title-notes.test.mts  # title+notes schema, cap, get, fallback (31)
-node test/todo-archive.test.mts     # archive + prune + restore + v2→v3 migrate (39)
-node test/todo-config.test.mts       # config defaults + corrupt recovery (15)
+node test/todo-archive.test.mts     # archive + prune + restore + v2→v3 migrate (55)
+node test/todo-config.test.mts       # config defaults + corrupt recovery + perProjectDefaultMax merge (17)
 node test/todo-migrate.test.mts     # v1→v2 file move + v2→v3 schema (26)
-node test/todo-health.test.mts      # bloat diagnostics + notes-bytes (25)
+node test/todo-health.test.mts      # bloat diagnostics + notes-bytes + per-project flags (34)
 node test/todo-hard-prune.test.mts   # confirm-gated deletion (16)
 node test/todo-auto-prune.test.mts # session_start age-gated auto-prune (12)
-node test/panel-data.test.mts       # TUI panel pure helpers (31)
-# or run all: npm test (255/255 across 9 suites)
+node test/registry.test.mts        # projects.json registry: load/save/reconcile/setMaxOpen/rename (28)
+node test/projects.test.mts        # per-project scope overview (21)
+node test/panel-data.test.mts       # TUI panel pure helpers (41)
+# or run all: npm test (325/325 across 11 suites)
 ```
 
 ## Notes
