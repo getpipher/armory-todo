@@ -152,6 +152,36 @@ ok("arch text search works", archSearch.items.every((t) => t.title.includes("don
   rmSync(dir, { recursive: true, force: true });
 }
 
+// --- pruneTodos rich result (items + ageDays) ---
+{
+  const dir = mkdtempSync(join(tmpdir(), "armory-prune-rich-"));
+  process.env.TODO_DIR = dir;
+  const { pruneTodos } = await import("../src/archive.ts");
+  const { addTodo, completeTodo, deleteTodo, loadStore, saveStore } = await import("../src/todo-store.ts");
+  const { loadArchive } = await import("../src/archive.ts");
+  const old = addTodo({ title: "old done", notes: "x" }); completeTodo(old.id);
+  const fresh = addTodo({ title: "fresh done", notes: "y" }); completeTodo(fresh.id);
+  const cancelled = addTodo({ title: "cancelled old", notes: "z" }); deleteTodo(cancelled.id);
+  const st = loadStore();
+  const thirtyAgo = new Date(Date.now() - 30 * 86400_000).toISOString();
+  for (const t of st.todos) {
+    if (t.id === old.id || t.id === cancelled.id) { t.closedAt = thirtyAgo; t.updatedAt = thirtyAgo; }
+  }
+  saveStore(st);
+  const res = pruneTodos({ ageDays: 7 });
+  ok("rich: moved 2 (old done + old cancelled; fresh stays)", res.moved === 2);
+  ok("rich: items length matches moved", res.items.length === res.moved);
+  ok("rich: items have title", res.items.every((i) => typeof i.title === "string" && i.title.length > 0));
+  ok("rich: items have status done|cancelled", res.items.every((i) => i.status === "done" || i.status === "cancelled"));
+  const oldItem = res.items.find((i) => i.id === old.id)!;
+  ok("rich: old done ageDays ~30", oldItem.ageDays >= 29 && oldItem.ageDays <= 31);
+  ok("rich: ids still present (back-compat)", res.ids.length === res.moved);
+  ok("rich: fresh done stays in live", loadStore().todos.some((t) => t.id === fresh.id));
+  ok("rich: old done + cancelled in archive", loadArchive().todos.length === 2);
+  delete process.env.TODO_DIR;
+  rmSync(dir, { recursive: true, force: true });
+}
+
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

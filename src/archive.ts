@@ -79,9 +79,17 @@ export interface PruneInput {
   statuses?: ("done" | "cancelled")[];
 }
 
+export interface PruneItem {
+  id: string;
+  status: "done" | "cancelled";
+  title: string;
+  ageDays: number;
+}
+
 export interface PruneResult {
   moved: number;
   ids: string[];
+  items: PruneItem[];
 }
 
 /**
@@ -118,14 +126,20 @@ export function pruneTodos(opts: PruneInput = {}): PruneResult {
     moved.push(todo);
   }
 
-  if (moved.length === 0) return { moved: 0, ids: [] };
+  if (moved.length === 0) return { moved: 0, ids: [], items: [] };
 
   live.todos = kept;
   archive.todos.push(...moved);
   saveStore(live);
   saveArchive(archive);
 
-  return { moved: moved.length, ids: moved.map((t) => t.id) };
+  const items: PruneItem[] = moved.map((t) => ({
+    id: t.id,
+    status: t.status as "done" | "cancelled",
+    title: t.title,
+    ageDays: t.closedAt ? Math.floor((Date.now() - Date.parse(t.closedAt)) / 86400_000) : 0,
+  }));
+  return { moved: moved.length, ids: moved.map((t) => t.id), items };
 }
 
 /**
