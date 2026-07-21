@@ -24,10 +24,12 @@ import { listTodos, parkTodo, completeTodo, deleteTodo, updateTodo, type Todo, t
 import { restoreTodo, archiveSummary, listArchived, listDoneUnified } from "./archive.ts";
 import { loadConfig, saveConfig, type TodoConfig } from "./config.ts";
 import { healthReport } from "./health.ts";
-import { todoToItem, archiveSummaryToItems, actionsForTodo, configToSettingItems, todoDoneItem, actionsForDoneTodo } from "./panel-data.ts";
+import { projectsOverview } from "./projects.ts";
+import { renameProject, setProjectMaxOpen, loadRegistry, saveRegistry } from "./registry.ts";
+import { todoToItem, archiveSummaryToItems, actionsForTodo, configToSettingItems, todoDoneItem, actionsForDoneTodo, projectOverviewToItems, actionsForProject, noProjectSummaryItem } from "./panel-data.ts";
 
-export type Box = "active" | "parked" | "done" | "archive" | "config";
-const BOXES: Box[] = ["active", "parked", "done", "archive", "config"];
+export type Box = "active" | "parked" | "done" | "archive" | "projects" | "config";
+const BOXES: Box[] = ["active", "parked", "done", "archive", "projects", "config"];
 
 export interface TodoPanelOpts {
   theme: Theme;
@@ -52,6 +54,9 @@ export class TodoPanel extends Container {
   private settingsList: SettingsList | null = null;
   private config: TodoConfig;
   private healthFlags: string[] = [];
+  private projectFilterName = "";      // set by the "Filter active to project" action
+  private projectEditKind: "rename" | "setmax" | null = null;
+  private projectEditName = "";       // which project is being edited
 
   constructor(opts: TodoPanelOpts) {
     super();
@@ -101,7 +106,10 @@ export class TodoPanel extends Container {
     this.addChild(new Spacer(1));
 
     if (this.editMode && this.editInput) {
-      this.addChild(new Text(this.theme.fg("accent", `  Edit [${this.editId}]:`), 0, 0));
+      const prompt = this.projectEditKind === "rename" ? `  Rename project '${this.projectEditName}' to:`
+        : this.projectEditKind === "setmax" ? `  Set maxOpen for '${this.projectEditName}' (number or 'clear'):`
+        : `  Edit [${this.editId}]:`;
+      this.addChild(new Text(this.theme.fg("accent", prompt), 0, 0));
       this.addChild(this.editInput);
       this.addChild(new Text(this.theme.fg("dim", "  enter save • esc cancel"), 0, 0));
     } else if (this.actionMode && this.actionList) {
@@ -137,7 +145,8 @@ export class TodoPanel extends Container {
   private refreshList(): void {
     const filter = this.filterInput.getValue();
     if (this.currentBox === "active") {
-      const todos = listTodos({ text: filter || undefined, limit: 50 });
+      const project = this.projectFilterName || undefined;
+      const todos = listTodos({ project, text: filter || undefined, limit: 50 });
       this.setSelectItems(todos.map(todoToItem));
     } else if (this.currentBox === "parked") {
       const todos = listTodos({ status: "parked", text: filter || undefined, limit: 50 });
@@ -153,6 +162,10 @@ export class TodoPanel extends Container {
         const res = listArchived({ text: filter, limit: 50 });
         this.setSelectItems(res.items.map(todoToItem));
       }
+    } else if (this.currentBox === "projects") {
+      const overview = projectsOverview();
+      const rows = projectOverviewToItems(overview);
+      this.setSelectItems([noProjectSummaryItem(overview), ...rows]);
     }
   }
 
@@ -188,7 +201,85 @@ export class TodoPanel extends Container {
       this.renderShell();
       return;
     }
+    if (this.currentBox === "projects") {
+      if (item.value === "__noproject__") return;   // (no project) summary — no submenu
+      this.openProjectSubmenu(item.value);
+      return;
+    }
     this.openActionSubmenu(item.value);
+  }
+
+  private openProjectSubmenu(name: string): void {
+    const acts = actionsForProject();
+    const items: SelectItem[] = acts.map((a) => ({ value: a.action, label: a.label }));
+    this.actionList = new SelectList(items, 8, {
+      selectedPrefix: (s) => this.theme.fg("accent", s),
+      selectedText: (s) => this.theme.fg("accent", s),
+      description: (s) => this.theme.fg("muted", s),
+      scrollInfo: (s) => this.theme.fg("dim", s),
+      noMatch: (s) => this.theme.fg("warning", s),
+    });
+    this.actionList.onSelect = (a) => this.executeProjectAction(name, a.value);
+    this.actionList.onCancel = () => { this.actionMode = false; this.actionList = null; this.renderShell(); };
+    this.actionMode = true;
+    this.renderShell();
+  }
+
+  private async executeProjectAction(name: string, action: string): Promise<void> {
+    try {
+      if (action === "filter") {
+        this.projectFilterName = name;
+        this.currentBox = "active";
+        this.filterInput.setValue("");   // clear text filter; scope is via projectFilterName
+        this.actionMode = false; this.actionList = null;
+        this.refreshList();
+        this.renderShell();
+        this.onNotify(`Filtered active to project: ${name}`);
+        return;
+      }
+      if (action === "rename" || action === "setmax") {
+        this.projectEditKind = action;
+        this.projectEditName = name;
+        this.editInput = new Input();
+        this.editInput.setValue(action === "rename" ? name : "");
+        this.editInput.onSubmit = (value) => {
+          try {
+            if (this.projectEditKind === "rename") {
+              const r = renameProject(this.projectEditName, value.trim());
+              this.onNotify(`Renamed ${this.projectEditName} → ${r.newName} (${r.liveRenamed} live + ${r.archivedRenamed} archived${r.merged ? ", merged" : ""})`);
+            } else if (this.projectEditKind === "setmax") {
+              const v = value.trim().toLowerCase();
+              const max = v === "clear" || v === "" ? null : Number(v);
+              if (max !== null && !Number.isFinite(max)) throw new Error("maxOpen must be a number or 'clear'");
+              const reg = loadRegistry();
+              setProjectMaxOpen(reg, this.projectEditName, max);
+              saveRegistry(reg);
+              this.onNotify(`${this.projectEditName} maxOpen = ${max === null ? "cleared" : max}`);
+            }
+          } catch (err) { this.onNotify((err as Error).message, "error"); }
+          this.exitProjectEdit();
+        };
+        this.editInput.onEscape = () => this.exitProjectEdit();
+        this.actionMode = false; this.actionList = null;
+        this.editMode = true;
+        this.renderShell();
+        return;
+      }
+    } catch (err) {
+      this.onNotify((err as Error).message, "error");
+    }
+    this.actionMode = false; this.actionList = null;
+    this.refreshList();
+    this.renderShell();
+  }
+
+  private exitProjectEdit(): void {
+    this.editMode = false;
+    this.editInput = null;
+    this.projectEditKind = null;
+    this.projectEditName = "";
+    this.refreshList();
+    this.renderShell();
   }
 
   private openActionSubmenu(id: string): void {
@@ -335,6 +426,7 @@ export class TodoPanel extends Container {
     const next = (idx + dir + BOXES.length) % BOXES.length;
     this.currentBox = BOXES[next]!;
     this.filterInput.setValue("");
+    this.projectFilterName = "";   // reset project scope on tab switch
     this.actionMode = false;
     this.actionList = null;
     this.refreshList();
@@ -344,7 +436,7 @@ export class TodoPanel extends Container {
   handleInput(data: string): void {
     if (this.editMode && this.editInput) {
       if (matchesKey(data, "escape") || matchesKey(data, "esc")) {
-        this.exitEditMode();
+        if (this.projectEditKind) this.exitProjectEdit(); else this.exitEditMode();
         return;
       }
       this.editInput.handleInput(data);
