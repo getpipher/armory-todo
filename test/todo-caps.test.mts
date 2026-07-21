@@ -221,6 +221,22 @@ ok("custom max param triggers summary", viaParam.includes("over budget (cap 3)")
 const viaParamUnder = renderOpenBlock(10);  // 5 <= 10 -> row list
 ok("custom max param under -> row list", viaParamUnder.includes("- [td-"));
 
+// regression: >20 actionable must report the TRUE count (listTodos defaults to limit 20)
+resetStore();
+setGlobalCap(15);
+for (let i = 0; i < 25; i++) addTodo({ title: `t${i}` });
+const many = renderOpenBlock();
+ok("25 actionable: summary reports true count 25 (not paginated 20)", many.includes("## Open TODOs (25)"));
+ok("25 actionable: over-budget header", many.includes("over budget (cap 15)"));
+ok("25 actionable: no row list (summary mode)", !many.includes("- [td-"));
+// under a high cap: all 25 rows shown (not truncated to 20)
+resetStore();
+setGlobalCap(50);
+for (let i = 0; i < 25; i++) addTodo({ title: `t${i}` });
+const allRows = renderOpenBlock();
+ok("25 actionable under cap 50: header count 25", allRows.includes("## Open TODOs (25)"));
+ok("25 actionable under cap 50: 25 rows listed", allRows.split("\n").filter((l) => l.startsWith("- [td-")).length === 25);
+
 // empty store -> unchanged
 resetStore();
 eq("empty store render", renderOpenBlock(), "## Open TODOs\n(none — no pending cross-session TODOs)\n");

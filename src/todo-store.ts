@@ -327,7 +327,7 @@ export function clearTodos(status: Status = "done"): number {
  *  prompt bounded when bloated. Under cap → the familiar row list (capped
  *  at activeMaxOpen rows). */
 export function renderOpenBlock(max?: number): string {
-  const todos = listTodos(); // actionable set, sorted
+  const todos = listTodos({ limit: Number.MAX_SAFE_INTEGER }); // actionable set, sorted — unpaginated so the count + slice are exact
   if (todos.length === 0) return "## Open TODOs\n(none — no pending cross-session TODOs)\n";
   let cap: number;
   try { cap = max ?? loadConfig().health.activeMaxOpen; } catch { cap = 15; }
