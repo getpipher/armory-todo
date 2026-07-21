@@ -34,10 +34,11 @@ src/          # todo-store (live CRUD + title/notes + getTodo + list), archive (
               # hard-prune (confirm-gated deletion), auto-prune (session_start age-gated prune),
               # registry (projects.json: load/save/reconcile/setMaxOpen/rename), levenshtein (typo edit-distance),
               # projects (per-project scope overview), panel (interactive TUI + detail + Done + Projects tabs),
-              # panel-data (pure helpers for panel), caps (v0.5.0 enforcement primitives: notes + project caps)
+              # panel-data (pure helpers for panel), caps (v0.5.0 enforcement primitives: notes + project caps),
+              # backup (v0.5.1 write-audit + rolling .bak + drop-snapshot + audit log)
 scripts/      # build/release helpers
-test/         # 12 suites: todo-store + todo-title-notes + todo-archive + todo-config + todo-migrate + todo-health
-              # + todo-hard-prune + todo-auto-prune + registry + projects + panel-data + todo-caps
+test/         # 13 suites: todo-store + todo-title-notes + todo-archive + todo-config + todo-migrate + todo-health
+              # + todo-hard-prune + todo-auto-prune + registry + projects + panel-data + todo-caps + todo-backup
 docs/         # todo-SPEC.md (v0.1.0, superseded) + superpowers/specs + superpowers/plans (v0.2.0 + v0.3.0 + v0.3.1 + v0.4.0 + v0.5.0)
 ```
 
@@ -56,7 +57,8 @@ node test/registry.test.mts        # projects.json registry: load/save/reconcile
 node test/projects.test.mts        # per-project scope overview (21)
 node test/panel-data.test.mts       # TUI panel pure helpers + maxNotesBytes config row (45)
 node test/todo-caps.test.mts        # v0.5.0 caps enforcement: notes + project + renderOpenBlock (68)
-# or run all: npm test (416/416 across 12 suites)
+node test/todo-backup.test.mts     # v0.5.1 write-audit + rolling .bak + drop-snapshot (28)
+# or run all: npm test (444/444 across 13 suites)
 ```
 
 ## Notes
@@ -67,6 +69,7 @@ node test/todo-caps.test.mts        # v0.5.0 caps enforcement: notes + project +
 - Auto-prune + unified Done (v0.3.1): done/cancelled older than `config.prune.defaultAgeDays` (7d) auto-archive on `session_start` (age-gated, never `--all`, silent when clean, rich notify). `listDoneUnified` merges live done + archived done (excludes `cancelled`); surfaced via `todo list status:'done'`, `/todo finished` slash, and a new `Done` box tab in the `/todo` panel (location-tagged rows, View detail + Restore-from-archive). Injection contract UNCHANGED (only open+in_progress injected).
 - Project-scope management (v0.4.0): project registry (`projects.json`, lazy-synced on read) + `projects` overview + per-project `health` flags (`PROJECT_OVER`/`TYPO`/`LARGE`/`STALE`) + advisory `maxOpen` slot + panel 6th `Projects` tab (Rename/Set maxOpen/Filter) + `todo project_rename` (rename or merge). Advisory only.
 - Caps enforcement (v0.5.0): per-project `maxOpen` blocks `add` + project-move (open/in_progress only; un-park intentionally not blocked). `health.maxNotesBytes` (default 8KB) rejects oversize notes at write (grandfathered existing; `NOTES_OVER` flag + `NotesBytes.maxId` suggestion). `renderOpenBlock` cap-aware: over `activeMaxOpen` → lean summary (counts + `PROJECT_OVER` projects + pointer), under → row list. Zero migration. Issue #1 Feature B (the forcing-function half) shipped.
+- Write-audit + backup (v0.5.1): every `saveStore`/`saveArchive` backs up to `<path>.bak` (rolling) + snapshots pre-write state to `<path>.bak-drop-<ts>` on a count drop + appends a counts-only line to `todo-audit.log`. Post the v0.2.0 migration data-loss incident (47-todo store destroyed, no backup). Recovery: restore from the newest `todo.json.bak-drop-<ts>`.
 - Never put secrets in a TODO — the text reaches the model provider.
 - Known deferred issue: no in-panel multi-line `notes` editing (pi-tui nested-UI blocker); `notes` is model-managed via the `todo` tool.
 - Issue #1 fully shipped (v0.4.0 Feature A + v0.5.0 Feature B). Open data fix: RECTOR's `getpither` typo (1 done) — `todo project_rename getpither getpipher` to clean (RECTOR's call).
