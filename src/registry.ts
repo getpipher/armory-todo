@@ -10,8 +10,8 @@
 // No env guard — projects.json always lives under TODO_DIR (temp dir in tests).
 
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { getTodoDir } from "./paths.ts";
+import { dirname } from "node:path";
+import { getRegistryPath } from "./paths.ts";
 import { loadStore, saveStore, TodoError, type Todo } from "./todo-store.ts";
 import { loadArchive, saveArchive } from "./archive.ts";
 
@@ -34,9 +34,7 @@ function emptyRegistry(): ProjectRegistry {
   return { version: 1, updatedAt: now(), projects: [] };
 }
 
-export function getRegistryPath(): string {
-  return join(getTodoDir(), "projects.json");
-}
+export { getRegistryPath } from "./paths.ts";
 
 export function loadRegistry(): ProjectRegistry {
   const path = getRegistryPath();
