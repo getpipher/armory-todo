@@ -25,6 +25,7 @@ export interface HealthConfig {
   archiveMax: number;
   archiveOldDays: number;
   perProjectDefaultMax: number;  // v0.4.0: per-project PROJECT_LARGE threshold (advisory)
+  maxNotesBytes: number;         // v0.5.0: per-todo notes byte cap (hard-reject at add/update)
 }
 
 export interface TodoConfig {
@@ -48,6 +49,7 @@ export const DEFAULT_CONFIG: TodoConfig = {
     archiveMax: 200,
     archiveOldDays: 180,
     perProjectDefaultMax: 8,
+    maxNotesBytes: 8192,
   },
 };
 
@@ -72,6 +74,9 @@ export function loadConfig(): TodoConfig {
     // Merge with defaults so new fields get filled in on upgrade.
     const health = { ...DEFAULT_CONFIG.health, ...parsed.health };
     if (health.perProjectDefaultMax === undefined) health.perProjectDefaultMax = DEFAULT_CONFIG.health.perProjectDefaultMax;
+    if (health.maxNotesBytes === undefined || typeof health.maxNotesBytes !== "number" || Number.isNaN(health.maxNotesBytes) || health.maxNotesBytes < 0) {
+      health.maxNotesBytes = DEFAULT_CONFIG.health.maxNotesBytes;
+    }
     return {
       version: 1,
       prune: { ...DEFAULT_CONFIG.prune, ...parsed.prune },
