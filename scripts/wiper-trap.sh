@@ -6,9 +6,9 @@
 # Usage: bash ~/local-dev/getpipher/armory-todo/scripts/wiper-trap.sh
 # Stop: Ctrl-C. The snapshots land in /tmp/wiper-trap-<ts>.txt
 
-AUDIT="$HOME/.pi/agent/todo/todo-audit.log"
-TODO_DIR="$HOME/.pi/agent/todo"
-[ -f "$AUDIT" ] || { echo "no audit log at $AUDIT — start a pi session first so v0.5.2 writes it"; exit 1; }
+AUDIT="${TODO_DIR:-$HOME/.pi/agent/todo}/todo-audit.log"
+TODO_DIR="${TODO_DIR:-$HOME/.pi/agent/todo}"
+[ -f "$AUDIT" ] || { echo "no audit log at $AUDIT — start a pi session first so v0.5.2 writes it (or set TODO_DIR to test against a temp store)"; exit 1; }
 
 echo "wiper trap armed — watching $AUDIT for new ⚠ DROP lines..."
 echo "(the recurring wiper has a ~18-min cadence; leave this running)"
@@ -39,7 +39,7 @@ tail -n0 -F "$AUDIT" 2>/dev/null | while IFS= read -r line; do
         lsof +D "$TODO_DIR" 2>/dev/null | awk '{print "  ", $1, $2, $3, $4, $5}' | sort -u
         echo
         echo "=== current live store state ==="
-        python3 -c "import json; d=json.load(open('$TODO_DIR/todo.json')); print('  live:', len(d['todos']), 'todos', [t['id'] for t in d['todos']])"
+        python3 -c "import json,os; p=os.path.join('$TODO_DIR','todo.json'); d=json.load(open(p)) if os.path.exists(p) else {'todos':[]}; print('  live:', len(d['todos']), 'todos', [t['id'] for t in d['todos']])"
       } > "$out"
       echo "[$(date +%H:%M:%S)] ⚠ DROP! snapshot -> $out"
       echo "  audit: $line"
