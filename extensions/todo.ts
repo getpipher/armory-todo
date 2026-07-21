@@ -38,6 +38,8 @@ import { pruneTodos, restoreTodo, listArchived, archiveSummary, listDoneUnified 
 import { healthReport } from "../src/health";
 import { hardPrune } from "../src/hard-prune";
 import { TodoPanel } from "../src/panel";
+import { autoPruneOnSessionStart } from "../src/auto-prune";
+import { loadConfig } from "../src/config";
 
 const ACTIONS = ["list", "add", "update", "get", "complete", "delete", "clear", "park", "prune", "restore", "health"] as const;
 
@@ -75,15 +77,27 @@ export default function (pi: ExtensionAPI) {
   // Warm + report on session start (every new/resume/fork/reload).
   pi.on("session_start", async (_event, ctx) => {
     try {
+      let autoMsg = "";
+      let ageDays = 7;
+      try {
+        ageDays = loadConfig().prune.defaultAgeDays;
+        const ap = autoPruneOnSessionStart();
+        if (ap) {
+          const lines = ap.items.map((i) => `  [${i.id}] ${i.status}  ${i.title}`);
+          autoMsg = ` · auto-pruned ${ap.moved} stale done (>${ageDays}d):\n${lines.join("\n")}\nUndo any with: todo restore <id>`;
+        }
+      } catch {
+        // auto-prune optional — don't crash the session notify
+      }
       const open = listTodos();
-      let msg = `armory-todo: ${open.length} open TODO${open.length === 1 ? "" : "s"}`;
+      let msg = `armory-todo: ${open.length} open TODO${open.length === 1 ? "" : "s"}${autoMsg}`;
       try {
         const report = healthReport();
         if (report.flags.length > 0) {
-          msg += ` — ⚠ ${report.flags.length} bloat signal${report.flags.length === 1 ? "" : "s"} (run /todo health)`;
+          msg += `${autoMsg ? "\n" : " — "}` + `⚠ ${report.flags.length} bloat signal${report.flags.length === 1 ? "" : "s"} (run /todo health)`;
         }
       } catch {
-        // health check optional — don't crash the session notify
+        // health check optional
       }
       if (ctx.hasUI) ctx.ui.notify(msg, "info");
     } catch {
