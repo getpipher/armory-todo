@@ -241,7 +241,7 @@ export class TodoPanel extends Container {
           this.editInput.onSubmit = (value) => {
             if (value.trim()) {
               try { updateTodo(id, { title: value.trim() }); this.onNotify(`Edited ${id}`); }
-              catch (err) { this.onNotify(`Error: ${(err as Error).message}`, "error"); }
+              catch (err) { this.onNotify((err as Error).message, "error"); }
             }
             this.exitEditMode();
           };
@@ -254,7 +254,7 @@ export class TodoPanel extends Container {
         }
       }
     } catch (err) {
-      this.onNotify(`Error: ${(err as Error).message}`, "error");
+      this.onNotify((err as Error).message, "error");
     }
     this.actionMode = false;
     this.actionList = null;
