@@ -392,6 +392,7 @@ export class TodoPanel extends Container {
       case "parkedStaleDays": return String(c.health.parkedStaleDays);
       case "archiveMax": return String(c.health.archiveMax);
       case "archiveOldDays": return String(c.health.archiveOldDays);
+      case "maxNotesBytes": return String(c.health.maxNotesBytes);
       default: return "";
     }
   }
@@ -408,6 +409,7 @@ export class TodoPanel extends Container {
       case "parkedStaleDays": this.config.health.parkedStaleDays = n; break;
       case "archiveMax": this.config.health.archiveMax = n; break;
       case "archiveOldDays": this.config.health.archiveOldDays = n; break;
+      case "maxNotesBytes": this.config.health.maxNotesBytes = n; break;
     }
     saveConfig(this.config);
     this.onNotify(`Config saved: ${id} = ${value}`, "info");
