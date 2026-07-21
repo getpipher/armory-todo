@@ -215,9 +215,11 @@ export class TodoPanel extends Container {
     const t = all.find((x) => x.id === id);
     if (!t) { this.onNotify("Todo not found.", "info"); return; }
     this.detailId = id;
+    this.detailMode = true;
     this.actionMode = false;
     this.actionList = null;
     this.editMode = false;
+    this.editInput = null;
     this.renderShell();
   }
 
