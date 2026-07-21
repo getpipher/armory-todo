@@ -103,11 +103,11 @@
         <path d="M14,8 L14,18 M11,8 L17,8 M11,18 L17,18" fill="none" stroke="#8a9791" stroke-width="1.4" stroke-linecap="round"/>
         <text x="27" y="17.5" fill="#c2cfc9" letter-spacing="0.4">MIT</text>
       </g>
-      <!-- v0.1.0 -->
+      <!-- v0.3.1 -->
       <g transform="translate(234, 0)">
         <rect x="0" y="0" rx="13" ry="13" width="98" height="26" fill="#10171a" stroke="#3a4a44" stroke-width="1"/>
         <path d="M14,9 L14,17 M14,9 L11,12 M14,9 L17,12" fill="none" stroke="#8a9791" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-        <text x="27" y="17.5" fill="#c2cfc9" letter-spacing="0.4">v0.1.0</text>
+        <text x="27" y="17.5" fill="#c2cfc9" letter-spacing="0.4">v0.3.1</text>
       </g>
       <!-- no dependencies -->
       <g transform="translate(342, 0)">
@@ -152,7 +152,7 @@
         <rect x="0" y="0" rx="6" ry="6" width="40" height="20" fill="#3a2a0e" stroke="#fbbf24" stroke-width="1"/>
         <text x="20" y="14.5" font-size="11" font-weight="700" fill="#fcd34d" text-anchor="middle" letter-spacing="0.4">high</text>
         <text x="52" y="14.5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#b8c4be">[td-…m6pjxhj]</text>
-        <text x="184" y="14.5" font-size="13" fill="#f4f7f4">⏵ Decouple global rules → AGENTS.md</text>
+        <text x="184" y="14.5" font-size="13" fill="#f4f7f4">⏵ Decouple global rules → AGENTS.md •</text>
         <rect x="408" y="2" rx="8" ry="8" width="44" height="16" fill="#13202b" stroke="#2b4250"/>
         <text x="430" y="13.5" font-size="10.5" fill="#a8b5af" text-anchor="middle">(pi)</text>
       </g>
@@ -162,7 +162,7 @@
         <rect x="0" y="0" rx="6" ry="6" width="34" height="20" fill="#0e1f33" stroke="#60a5fa" stroke-width="1"/>
         <text x="17" y="14.5" font-size="11" font-weight="700" fill="#93c5fd" text-anchor="middle" letter-spacing="0.4">med</text>
         <text x="46" y="14.5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#b8c4be">[td-…mzr0qs9]</text>
-        <text x="178" y="14.5" font-size="13" fill="#f4f7f4">Research browser-use vs Chrome MCP</text>
+        <text x="178" y="14.5" font-size="13" fill="#f4f7f4">Research browser-use vs Chrome MCP •</text>
       </g>
 
       <!-- row 3: low -->

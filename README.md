@@ -15,6 +15,10 @@
   <img src="https://img.shields.io/badge/dependencies-0-9aa7a1" alt="no dependencies">
 </p>
 
+<p align="center">
+  <strong>lifecycle boxes</strong> · <strong>title + notes</strong> · <strong>auto-prune</strong> · <strong>interactive panel</strong> · <strong>health diagnostics</strong> · <strong>hard-prune gate</strong>
+</p>
+
 ---
 
 ## The problem
@@ -134,7 +138,7 @@ Typed subcommands (`/todo park <id>`, `/todo prune`, etc.) all still work alongs
 /todo                    list open + in-progress TODOs
 /todo all                include parked/done/cancelled
 /todo add <title>        quick add (priority: med; notes via the todo tool)
-/todo finished            list all done todos (live + archived, recent first)
+/todo finished          list all done todos (live + archived, recent first)
 /todo done <id>          mark done
 /todo rm <id>            cancel (tombstone)
 /todo park <id>          defer (parked — not injected, recoverable)
@@ -175,6 +179,7 @@ Each TODO carries `id, title (≤120 chars), notes (any length), project, tags, 
 - **Archive query** — `list` with `archived:true` is summary-first (counts by project + month) then filtered/paginated on demand, so a large archive never bloats a single query.
 
 Full design + decisions:
+- v0.3.1 (auto-prune + unified Done view): [`docs/superpowers/specs/2026-07-21-auto-prune-done-view-design.md`](docs/superpowers/specs/2026-07-21-auto-prune-done-view-design.md)
 - v0.3.0 (title + notes split): [`docs/superpowers/specs/2026-07-21-title-notes-split-design.md`](docs/superpowers/specs/2026-07-21-title-notes-split-design.md)
 - v0.2.0 (lifecycle boxes + prune + health): [`docs/superpowers/specs/2026-07-20-lifecycle-boxes-prune-design.md`](docs/superpowers/specs/2026-07-20-lifecycle-boxes-prune-design.md)
 - Original v0.1.0 spec: [`docs/todo-SPEC.md`](docs/todo-SPEC.md)
