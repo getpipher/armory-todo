@@ -26,6 +26,7 @@ eq("default parkedMax 10", DEFAULT_CONFIG.health.parkedMax, 10);
 eq("default parkedStaleDays 60", DEFAULT_CONFIG.health.parkedStaleDays, 60);
 eq("default archiveMax 200", DEFAULT_CONFIG.health.archiveMax, 200);
 eq("default archiveOldDays 180", DEFAULT_CONFIG.health.archiveOldDays, 180);
+eq("default perProjectDefaultMax 8", DEFAULT_CONFIG.health.perProjectDefaultMax, 8);
 
 // --- missing config → defaults written ---
 const cfg = loadConfig();
@@ -37,6 +38,12 @@ const mutated = { ...cfg, prune: { ...cfg.prune, defaultAgeDays: 14 } };
 saveConfig(mutated);
 const reloaded = loadConfig();
 eq("saved config reloads", reloaded.prune.defaultAgeDays, 14);
+
+// --- forward-compatible merge: an old config without perProjectDefaultMax gets the default ---
+const oldShape: any = { version: 1, prune: { ...cfg.prune }, health: { activeMaxOpen: 15, activeStaleDays: 30, parkedMax: 10, parkedStaleDays: 60, archiveMax: 200, archiveOldDays: 180 } };
+saveConfig(oldShape);
+const merged = loadConfig();
+eq("missing perProjectDefaultMax → default 8", merged.health.perProjectDefaultMax, 8);
 
 // --- config file is 0600 ---
 const mode = statSync(join(tmp, "todo.config.json")).mode & 0o777;
