@@ -164,8 +164,10 @@ export function renameProject(oldName: string, newName: string): RenameResult {
   // 3. registry: remove old, ensure next exists
   reg.projects = reg.projects.filter((p) => p.name !== old);
   if (!getProjectEntry(reg, next)) {
-    reg.projects.push({ name: next, maxOpen: null, createdAt: now(), updatedAt: now() });
+    // non-merge: preserve the renamed project's cap + provenance (don't silently drop maxOpen)
+    reg.projects.push({ name: next, maxOpen: oldEntry.maxOpen, createdAt: oldEntry.createdAt, updatedAt: now() });
   }
+  // merge (next already exists): keep next's existing entry + cap unchanged
   reg.updatedAt = now();
   saveRegistry(reg);
 

@@ -100,6 +100,30 @@ let threw3 = false;
 try { renameProject("does-not-exist", "x"); } catch { threw3 = true; }
 ok("rename unknown throws", threw3);
 
+// --- issue #1: non-merge rename preserves the source project's maxOpen + createdAt ---
+addTodo({ title: "cap1", project: "capped" });
+let regC = loadRegistry();
+const cappedEntry = setProjectMaxOpen(regC, "capped", 5);
+saveRegistry(regC);
+const cappedCreatedAt = getProjectEntry(loadRegistry(), "capped")!.createdAt;
+const rc = renameProject("capped", "capped-prod");   // non-merge (capped-prod doesn't exist)
+ok("non-merge rename → merged=false", !rc.merged);
+const prodEntry = getProjectEntry(loadRegistry(), "capped-prod")!;
+eq("non-merge rename preserves maxOpen", prodEntry.maxOpen, 5);
+eq("non-merge rename preserves createdAt", prodEntry.createdAt, cappedCreatedAt);
+ok("capped removed after rename", getProjectEntry(loadRegistry(), "capped") === undefined);
+
+// merge keeps the TARGET's cap (does not get overwritten by source's)
+addTodo({ title: "t1", project: "keep-cap" });
+addTodo({ title: "t2", project: "drop-cap" });
+let regM2 = loadRegistry();
+setProjectMaxOpen(regM2, "keep-cap", 3);   // target cap 3
+setProjectMaxOpen(regM2, "drop-cap", 9);   // source cap 9
+saveRegistry(regM2);
+const rm = renameProject("drop-cap", "keep-cap");   // merge
+ok("merge → merged=true", rm.merged);
+eq("merge keeps target's cap (3, not source's 9)", getProjectEntry(loadRegistry(), "keep-cap")!.maxOpen, 3);
+
 // --- corrupt registry → backup + fresh empty ---
 writeFileSync(join(tmp, "projects.json"), "{ not json", "utf8");
 const recovered = loadRegistry();
