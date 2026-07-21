@@ -22,6 +22,7 @@ import { migrateIfNeeded, migrateV2ToV3 } from "./migrate.ts";
 import { loadConfig } from "./config.ts";
 import { loadRegistry, getProjectEntry } from "./registry.ts";
 import { checkNotesCap, checkProjectCap, overBudgetProjects } from "./caps.ts";
+import { backupFile, snapshotOnDrop, appendAudit, countTodosInFile } from "./backup.ts";
 
 export type Priority = "low" | "med" | "high" | "critical";
 export type Status = "open" | "in_progress" | "parked" | "done" | "cancelled";
@@ -150,6 +151,12 @@ export function loadStore(): Store {
 export function saveStore(store: Store): void {
   store.updatedAt = now();
   const path = getLivePath();
+  // v0.5.1 write-audit + backup (post data-loss hardening): back up the current
+  // file, snapshot pre-write state on a count drop, then audit-log the save.
+  const before = countTodosInFile(path);
+  const after = store.todos.length;
+  backupFile(path);
+  const dropSnap = snapshotOnDrop(path, before, after);
   const dir = dirname(path);
   mkdirSync(dir, { recursive: true });
   const tmp = `${path}.tmp`;
@@ -160,6 +167,7 @@ export function saveStore(store: Store): void {
     // some filesystems ignore mode bits; not fatal
   }
   renameSync(tmp, path);
+  appendAudit("todo", before, after, dropSnap);
 }
 
 function assertPriority(p: unknown): asserts p is Priority {
