@@ -1,7 +1,7 @@
 # Workstream B — `title` + `notes` schema split (v0.3.0)
 
 **Date:** 2026-07-21
-**Status:** Design approved → pending implementation plan
+**Status:** Shipped (v0.3.0, PR #4, 2026-07-21)
 **Branch:** `feat/title-notes-split` off `main`
 **Predecessor:** v0.2.0 (Workstream A — lifecycle boxes + prune + health + TUI panel), PR #3, shipped 2026-07-21
 **Supersedes (for this scope):** `2026-07-20-lifecycle-boxes-prune-design.md` §14 (which deferred this exact split to Workstream B)
