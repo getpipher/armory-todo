@@ -12,6 +12,7 @@ import { migrateV2ToV3 } from "./migrate.ts";
 import type { Todo } from "./todo-store.ts";
 import { loadConfig } from "./config.ts";
 import { loadStore, saveStore, TodoError } from "./todo-store.ts";
+import { backupFile, snapshotOnDrop, appendAudit, countTodosInFile } from "./backup.ts";
 
 export interface ArchiveStore {
   version: 3;
@@ -61,6 +62,11 @@ export function loadArchive(): ArchiveStore {
 export function saveArchive(store: ArchiveStore): void {
   store.updatedAt = now();
   const path = getArchivePath();
+  // v0.5.1 write-audit + backup (post data-loss hardening).
+  const before = countTodosInFile(path);
+  const after = store.todos.length;
+  backupFile(path);
+  const dropSnap = snapshotOnDrop(path, before, after);
   const dir = dirname(path);
   mkdirSync(dir, { recursive: true });
   const tmp = `${path}.tmp`;
@@ -71,6 +77,7 @@ export function saveArchive(store: ArchiveStore): void {
     // some filesystems ignore mode bits
   }
   renameSync(tmp, path);
+  appendAudit("archive", before, after, dropSnap);
 }
 
 export interface PruneInput {
