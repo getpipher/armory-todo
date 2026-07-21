@@ -14,7 +14,7 @@
 //
 // Pure fs helpers (no pi imports) so they're unit-testable in isolation.
 
-import { chmodSync, copyFileSync, existsSync, mkdirSync, appendFileSync, statSync, readFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, appendFileSync, statSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getTodoDir } from "./paths.ts";
 
@@ -80,4 +80,44 @@ export function countTodosInFile(path: string): number {
 
 function readJson(path: string): any {
   return JSON.parse(readFileSync(path, "utf8"));
+}
+
+// --- v0.5.2 wipe alert (one-shot sentinel) ---
+const WIPE_ALERT_PATH = join(getTodoDir(), ".wipe-alert");
+
+/** On a drop, write a one-shot sentinel at <TODO_DIR>/.wipe-alert so the next
+ *  pi session_start can surface the recovery prominently. Overwritten by each
+ *  new drop (the latest wins). The session_start handler reads + deletes it. */
+export function writeWipeAlert(before: number, after: number, snap: string | null): void {
+  try {
+    const dir = getTodoDir();
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, ".wipe-alert");
+    const payload = {
+      at: new Date().toISOString(),
+      before,
+      after,
+      snap: snap ? snap.split("/").pop() : null,
+      snapPath: snap,
+    };
+    writeFileSync(path, JSON.stringify(payload, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
+    try { chmodSync(path, 0o600); } catch { /* fs may ignore mode */ }
+  } catch {
+    // best-effort; alert must not block the write
+  }
+}
+
+/** Read + delete the wipe-alert sentinel (one-shot). Returns the payload if a
+ *  pending alert exists, else null. The caller surfaces it in session_start
+ *  then it's gone (until the next drop). */
+export function readAndClearWipeAlert(): { at: string; before: number; after: number; snap: string | null; snapPath: string | null } | null {
+  try {
+    const path = join(getTodoDir(), ".wipe-alert");
+    if (!existsSync(path)) return null;
+    const payload = JSON.parse(readFileSync(path, "utf8"));
+    try { unlinkSync(path); } catch { /* best-effort clear */ }
+    return payload;
+  } catch {
+    return null;
+  }
 }

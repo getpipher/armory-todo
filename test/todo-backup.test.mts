@@ -99,6 +99,34 @@ ok("archive .bak exists", existsSync(`${arch}.bak`));
 eq("archive .bak holds previous (2) state", countTodosInFile(`${arch}.bak`), 2);
 ok("audit log has archive lines", readFileSync(logPath, "utf8").includes("save archive.json"));
 
+// --- v0.5.2: wipe-alert sentinel (one-shot) ---
+const { writeWipeAlert, readAndClearWipeAlert } = await import("../src/backup.ts");
+const { existsSync: exists2 } = await import("node:fs");
+// clear any alert left by the integration drop-save above, then start clean
+readAndClearWipeAlert();
+// no alert initially
+eq("no alert initially", readAndClearWipeAlert(), null);
+// write one (a drop)
+writeWipeAlert(9, 2, "/x/y/todo.json.bak-drop-2026-07-21T07-36-07-656Z");
+ok("alert file exists after write", exists2(join(tmp, ".wipe-alert")));
+const alert1 = readAndClearWipeAlert();
+ok("alert read: before=9", alert1 !== null && alert1!.before === 9);
+ok("alert read: after=2", alert1 !== null && alert1!.after === 2);
+ok("alert read: snap is basename", alert1 !== null && alert1!.snap === "todo.json.bak-drop-2026-07-21T07-36-07-656Z");
+// one-shot: reading cleared it
+eq("alert cleared after read (one-shot)", readAndClearWipeAlert(), null);
+ok("alert file gone after read", !exists2(join(tmp, ".wipe-alert")));
+// growth does NOT write an alert (only drops)
+// (simulate: saveStore with growth — but saveStore only calls writeWipeAlert on drop.
+//  verify the helper isn't called on growth by checking no alert after a growth save)
+saveStore({ version: 3, updatedAt: fresh, todos: [mk("a"), mk("b"), mk("c"), mk("d"), mk("e"), mk("f"), mk("g")] });
+ok("growth save did NOT create a wipe-alert", !exists2(join(tmp, ".wipe-alert")));
+// a drop save DOES create the alert
+saveStore({ version: 3, updatedAt: fresh, todos: [mk("only-again")] });
+ok("drop save created a wipe-alert", exists2(join(tmp, ".wipe-alert")));
+const alert2 = readAndClearWipeAlert();
+ok("drop-save alert: before=7 after=1", alert2 !== null && alert2!.before === 7 && alert2!.after === 1);
+
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

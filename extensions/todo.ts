@@ -42,6 +42,7 @@ import { autoPruneOnSessionStart } from "../src/auto-prune";
 import { loadConfig } from "../src/config";
 import { projectsOverview } from "../src/projects";
 import { renameProject } from "../src/registry";
+import { readAndClearWipeAlert } from "../src/backup";
 
 const ACTIONS = ["list", "add", "update", "get", "complete", "delete", "clear", "park", "prune", "restore", "health", "projects", "project_rename"] as const;
 
@@ -79,6 +80,16 @@ export default function (pi: ExtensionAPI) {
   // Warm + report on session start (every new/resume/fork/reload).
   pi.on("session_start", async (_event, ctx) => {
     try {
+      // v0.5.2: surface a pending wipe-alert sentinel FIRST (most prominent).
+      let wipeMsg = "";
+      try {
+        const alert = readAndClearWipeAlert();
+        if (alert) {
+          wipeMsg = `⚠ WIPE RECOVERED: ${alert.before}→${alert.after} at ${alert.at}${alert.snap ? `, snap=${alert.snap}` : ""} — check ~/.pi/agent/todo/todo-audit.log + run \`ps aux | grep -iE 'tsx|pi'\` to catch the wiper live`;
+        }
+      } catch {
+        // alert optional
+      }
       let autoMsg = "";
       let ageDays = 7;
       try {
@@ -101,7 +112,7 @@ export default function (pi: ExtensionAPI) {
       } catch {
         // health check optional
       }
-      if (ctx.hasUI) ctx.ui.notify(msg, "info");
+      if (ctx.hasUI) ctx.ui.notify((wipeMsg ? wipeMsg + "\n" : "") + msg, "info");
     } catch {
       // store unavailable — never crash the session
     }
