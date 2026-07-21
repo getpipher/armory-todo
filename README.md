@@ -103,21 +103,28 @@ todos. It's gated three ways:
 Everything else in armory-todo is reversible. `prune --hard` is the one
 irreversible escape hatch, always user-confirmed.
 
-## Title + notes (v0.3.0)
+## Project-scope management (v0.4.0)
 
-The single `text` field is split into **`title`** (≤120 chars, one-line summary — the only thing injected into the prompt or shown in compact lists) and **`notes`** (any length, the running detail/log — never auto-injected). A hard cap rejects `title` >120 chars at `add`/`update` so the junk-drawer pattern can't re-form. `list` shows titles + a `•` marker when notes exist; `get <id>` reads a todo's full notes before acting on it. v2 `text`-only stores migrate on first load (curated for the 2 known todos + a first-line fallback).
+A project registry (`~/.pi/agent/todo/projects.json`, lazy-synced on read) tracks known projects + an advisory per-project **`maxOpen`** cap slot. The `todo` tool gains two actions: **`projects`** (per-project scope overview — open/in_progress/parked/done counts + `maxOpen` + `OVER`/`?typo` markers + last-updated) and **`project_rename`** (rename or merge a project; rewrites live + archive + registry — the typo-cleanup path, e.g. `getpither` → `getpipher`).
+
+`health` gains four per-project flags: **`PROJECT_OVER`** (open > a project's `maxOpen` slot), **`PROJECT_LARGE`** (open > `health.perProjectDefaultMax`, default 8 — fires out-of-the-box, no per-project config needed), **`PROJECT_STALE`** (project untouched > `activeStaleDays`), **`PROJECT_TYPO`** (1-todo project with a near-named sibling, Levenshtein ≤ 2). The `/todo health` report + the `todo` `health` action both show a `projects:` section.
+
+The interactive `/todo` panel gains a 6th tab — **Projects** — listing the overview rows + a `(no project)` summary, with an action submenu per project: **Rename / merge** (inline input), **Set maxOpen** (number or `clear`), **Filter active to project** (jump to the Active tab scoped). A thin `/todo projects` slash mirrors the overview as text.
+
+**Advisory only in v0.4.0** — `maxOpen` drives a `health` flag, it does **not** block `add` (enforcement graduates in v0.5.0, alongside count + notes caps + over-cap injection truncation).
 
 ## Interactive panel (SPEC-3)
 
 Run `/todo` (no arg) in a TUI session to open the interactive triage panel:
 
-- **Box tabs** (Tab / Shift+Tab): Active · Parked · **Done** · Archive · Config
+- **Box tabs** (Tab / Shift+Tab): Active · Parked · **Done** · Archive · **Projects** · Config
 - **Filter input**: type to search by text (live filter)
 - **SelectList**: arrow keys navigate, Enter selects
 - **Action submenu** (on Enter): View detail / Complete / Park / Re-activate / Restore / Edit title / Delete
 - **Done tab** (v0.3.1): all finished work (`status: done`) unified across live + archive, location-tagged (`[live Nd]` / `[archived YYYY-MM-DD]`), filterable; Enter → View detail, or Restore-from-archive. Excludes `cancelled` (that's in the Archive tab).
 - **Detail view** (View detail, or Enter on a row): renders the title + full `notes` read-only, with a footer hint on editing notes via the `todo` tool
 - **Archive box**: summary-first (counts by project + month) → Enter on a bucket to drill down
+- **Projects tab** (v0.4.0): per-project scope overview (open/in_progress/parked/done counts + `maxOpen` + `OVER`/`?typo` markers) + a `(no project)` summary row; Enter on a project → action submenu: Rename / merge · Set maxOpen · Filter active to project.
 - **Config box**: SettingsList with prune ages + health thresholds — edit live, persists to `todo.config.json`
 - **Escape**: exit the panel
 
@@ -172,13 +179,14 @@ Each TODO carries `id, title (≤120 chars), notes (any length), project, tags, 
 
 ## How it works
 
-- **Disk store** — `~/.pi/agent/todo/` folder: `todo.json` (live: active + parked), `todo-archive.json` (sealed: done + cancelled), `todo.config.json` (prune ages + health thresholds). Atomic `0600` writes, corrupt-file auto-recovery, `version: 3` schema (`title` ≤120 chars + `notes` any length; v2 `text`-only stores migrate to v3 on first load). Not pi session entries, so it outlives any conversation.
+- **Disk store** — `~/.pi/agent/todo/` folder: `todo.json` (live: active + parked), `todo-archive.json` (sealed: done + cancelled), `todo.config.json` (prune ages + health thresholds), `projects.json` (project registry: canonical names + advisory `maxOpen` slots, v0.4.0). Atomic `0600` writes, corrupt-file auto-recovery, `version: 3` store schema (`title` ≤120 chars + `notes` any length; v2 `text`-only stores migrate to v3 on first load). Not pi session entries, so it outlives any conversation.
 - **`todo` tool** — model CRUD + lifecycle (above).
 - **`/todo` command** — human triage (above).
 - **Auto-inject** — on every `before_agent_start`, a compact `## Open TODOs (N)` block (titles + ids, capped at 15, sorted by priority) is appended to the system prompt, so the agent starts every turn already aware of pending work. Only `open` + `in_progress` are injected — `parked` and archived todos are excluded (the lifecycle-box boundary). Mutations refresh it on the next turn.
 - **Archive query** — `list` with `archived:true` is summary-first (counts by project + month) then filtered/paginated on demand, so a large archive never bloats a single query.
 
 Full design + decisions:
+- v0.4.0 (project-scope management): [`docs/superpowers/specs/2026-07-21-project-scope-management-design.md`](docs/superpowers/specs/2026-07-21-project-scope-management-design.md)
 - v0.3.1 (auto-prune + unified Done view): [`docs/superpowers/specs/2026-07-21-auto-prune-done-view-design.md`](docs/superpowers/specs/2026-07-21-auto-prune-done-view-design.md)
 - v0.3.0 (title + notes split): [`docs/superpowers/specs/2026-07-21-title-notes-split-design.md`](docs/superpowers/specs/2026-07-21-title-notes-split-design.md)
 - v0.2.0 (lifecycle boxes + prune + health): [`docs/superpowers/specs/2026-07-20-lifecycle-boxes-prune-design.md`](docs/superpowers/specs/2026-07-20-lifecycle-boxes-prune-design.md)
@@ -190,12 +198,12 @@ Full design + decisions:
 |---|---|---|
 | `TODO_DIR` | `~/.pi/agent/todo/` | override the store folder (tests / multiple profiles) |
 
-Run the store tests: `npm test` (255/255 across 9 suites).
+Run the store tests: `npm test` (315/315 across 11 suites).
 
 ## Known issues
 
 - **No in-panel multi-line `notes` editing.** The panel's inline Edit is single-line (`Input`) for `title` only; `ctx.ui.editor()` from inside `ctx.ui.custom()` triggers a nested-UI bug (`/todo` won't reopen). `notes` is model-managed via the `todo` tool (`action: update, id, notes`). When a safe `ctx.ui.editor()`-from-`custom()` pattern lands in pi-tui, in-panel notes editing is a clean follow-up.
-- **Preventive caps-on-add** (notes length cap + project registry) are deferred to Workstream C (v0.4.0). Until then, `health` reports notes-bytes as a read-only diagnostic.
+- **No caps enforcement yet (count / notes / injection).** v0.4.0's `maxOpen` slot is advisory only (drives a `health` flag); block-on-add for count + notes caps + over-cap injection truncation land in v0.5.0. Until then, `health` reports counts + notes-bytes as read-only diagnostics.
 
 ## Security
 

@@ -4,6 +4,7 @@
 //   todo.json          — live store (open, in_progress, parked)
 //   todo-archive.json  — sealed history (done, cancelled)
 //   todo.config.json   — prune ages + health thresholds
+//   projects.json      — project registry (canonical names + maxOpen slots, v0.4.0)
 //
 // The legacy v1 single file was ~/.pi/agent/todo.json; migrate.ts handles
 // moving it into the folder on first load.
@@ -28,6 +29,10 @@ export function getArchivePath(): string {
 
 export function getConfigPath(): string {
   return join(getTodoDir(), "todo.config.json");
+}
+
+export function getRegistryPath(): string {
+  return join(getTodoDir(), "projects.json");
 }
 
 /** The pre-v2 single-file store location. Used by migrate.ts. */

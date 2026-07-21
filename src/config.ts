@@ -24,6 +24,7 @@ export interface HealthConfig {
   parkedStaleDays: number;
   archiveMax: number;
   archiveOldDays: number;
+  perProjectDefaultMax: number;  // v0.4.0: per-project PROJECT_LARGE threshold (advisory)
 }
 
 export interface TodoConfig {
@@ -46,6 +47,7 @@ export const DEFAULT_CONFIG: TodoConfig = {
     parkedStaleDays: 60,
     archiveMax: 200,
     archiveOldDays: 180,
+    perProjectDefaultMax: 8,
   },
 };
 
@@ -68,10 +70,12 @@ export function loadConfig(): TodoConfig {
       throw new Error("invalid config shape");
     }
     // Merge with defaults so new fields get filled in on upgrade.
+    const health = { ...DEFAULT_CONFIG.health, ...parsed.health };
+    if (health.perProjectDefaultMax === undefined) health.perProjectDefaultMax = DEFAULT_CONFIG.health.perProjectDefaultMax;
     return {
       version: 1,
       prune: { ...DEFAULT_CONFIG.prune, ...parsed.prune },
-      health: { ...DEFAULT_CONFIG.health, ...parsed.health },
+      health,
     };
   } catch {
     try {

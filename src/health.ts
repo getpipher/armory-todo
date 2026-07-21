@@ -6,6 +6,8 @@
 import { loadStore } from "./todo-store.ts";
 import { loadArchive } from "./archive.ts";
 import { loadConfig } from "./config.ts";
+import { loadRegistry, reconcileRegistry, saveRegistry, getProjectEntry } from "./registry.ts";
+import { levenshtein } from "./levenshtein.ts";
 
 export interface ActiveHealth {
   open: number;
@@ -32,7 +34,19 @@ export interface NotesBytes {
 export type HealthFlag =
   | "ACTIVE_LARGE" | "ACTIVE_STALE"
   | "PARKED_LARGE" | "PARKED_STALE"
-  | "ARCHIVE_LARGE" | "ARCHIVE_OLD";
+  | "ARCHIVE_LARGE" | "ARCHIVE_OLD"
+  | "PROJECT_OVER" | "PROJECT_TYPO" | "PROJECT_LARGE" | "PROJECT_STALE";
+
+export interface ProjectHealth {
+  name: string;
+  open: number;
+  maxOpen: number | null;
+  over: boolean;
+  typo: boolean;
+  large: boolean;
+  stale: boolean;
+  lastUpdated: string;
+}
 
 export interface HealthReport {
   active: ActiveHealth;
@@ -41,6 +55,8 @@ export interface HealthReport {
   notesBytes: NotesBytes;
   flags: HealthFlag[];
   suggestions: string[];
+  projects: ProjectHealth[];   // only projects with ≥1 flag, sorted open desc
+  noProject: { open: number };  // (no project) open count, for context
 }
 
 function daysAgo(iso: string): number {
@@ -52,6 +68,11 @@ export function healthReport(): HealthReport {
   const h = config.health;
   const live = loadStore();
   const archive = loadArchive();
+
+  // reconcile registry first (lazy sync), persist iff changed
+  const reg = loadRegistry();
+  const { reg: synced, changed } = reconcileRegistry(reg, live.todos, archive.todos);
+  if (changed) saveRegistry(synced);
 
   const openTodos = live.todos.filter((t) => t.status === "open");
   const ipTodos = live.todos.filter((t) => t.status === "in_progress");
@@ -93,5 +114,42 @@ export function healthReport(): HealthReport {
   if (parkedStale > 0) suggestions.push(`parked: ${parkedStale} parked > ${h.parkedStaleDays}d → restore or hard-prune`);
   if (actionable.length > h.activeMaxOpen) suggestions.push(`active: ${actionable.length} open+in_progress (max ${h.activeMaxOpen}) → close or park some before adding more`);
 
-  return { active, parked, archive: arch, notesBytes, flags, suggestions };
+  // per-project flags (v0.4.0)
+  const archivedDone = archive.todos.filter((t) => t.status === "done");
+  const projectNames = new Set<string>();
+  for (const t of live.todos) { const p = t.project.trim(); if (p) projectNames.add(p); }
+  for (const t of archivedDone) { const p = t.project.trim(); if (p) projectNames.add(p); }
+
+  const projectHealth: ProjectHealth[] = [];
+  for (const name of projectNames) {
+    const liveForName = live.todos.filter((t) => t.project.trim() === name);
+    const open = liveForName.filter((t) => t.status === "open").length;
+    const entry = getProjectEntry(synced, name);
+    const maxOpen = entry?.maxOpen ?? null;
+    const over = maxOpen !== null && open > maxOpen;
+    const large = open > h.perProjectDefaultMax;
+    const lastUpdated = liveForName.length ? liveForName.map((t) => t.updatedAt).sort().at(-1) ?? "" : "";
+    const stale = lastUpdated !== "" && daysAgo(lastUpdated) > h.activeStaleDays;
+    const totalForName = liveForName.length + archivedDone.filter((t) => t.project.trim() === name).length;
+    const typo = totalForName === 1 && [...projectNames].some((o) => o !== name && levenshtein(name, o) <= 2);
+    if (over || large || stale || typo) {
+      projectHealth.push({ name, open, maxOpen, over, typo, large, stale, lastUpdated });
+    }
+  }
+  projectHealth.sort((a, b) => b.open - a.open || a.name.localeCompare(b.name));
+
+  for (const p of projectHealth) {
+    if (p.over) { flags.push("PROJECT_OVER"); suggestions.push(`project '${p.name}' ${p.open} open (maxOpen ${p.maxOpen}) → close/park some, or raise maxOpen`); }
+    if (p.large) { flags.push("PROJECT_LARGE"); suggestions.push(`project '${p.name}' ${p.open} open (per-project default max ${h.perProjectDefaultMax}) → over budget`); }
+    if (p.stale) { flags.push("PROJECT_STALE"); suggestions.push(`project '${p.name}' untouched > ${h.activeStaleDays}d → park or close`); }
+    if (p.typo) {
+      flags.push("PROJECT_TYPO");
+      const sib = [...projectNames].find((o) => o !== p.name && levenshtein(p.name, o) <= 2);
+      suggestions.push(`project '${p.name}' has 1 todo — possible typo of '${sib}'? → todo project rename ${p.name} ${sib}`);
+    }
+  }
+
+  const noProject = { open: live.todos.filter((t) => t.project.trim() === "" && t.status === "open").length };
+
+  return { active, parked, archive: arch, notesBytes, flags, suggestions, projects: projectHealth, noProject };
 }
