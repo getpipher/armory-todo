@@ -141,6 +141,25 @@ eq("clean flags empty", clean.flags.length, 0);
   rmSync(dir, { recursive: true, force: true });
 }
 
+// ===== v0.5.0: NOTES_OVER flag + maxId =====
+const { saveConfig } = await import("../src/config.ts");
+saveConfig({ version: 1, prune: { defaultAgeDays: 7, hardAgeDays: 180, statuses: ["done", "cancelled"] }, health: { activeMaxOpen: 15, activeStaleDays: 30, parkedMax: 10, parkedStaleDays: 60, archiveMax: 200, archiveOldDays: 180, perProjectDefaultMax: 8, maxNotesBytes: 100 } });
+saveStore({ version: 3, updatedAt: fresh, todos: [
+  { id: "td-big", title: "big note todo", notes: "z".repeat(500), project: "pi", tags: [], priority: "med", status: "open", source: "", createdAt: fresh, updatedAt: fresh, closedAt: null },
+  { id: "td-small", title: "small note todo", notes: "y".repeat(20), project: "pi", tags: [], priority: "med", status: "open", source: "", createdAt: fresh, updatedAt: fresh, closedAt: null },
+] });
+const rep2 = healthReport();
+ok("NOTES_OVER flag present when max note > cap", rep2.flags.includes("NOTES_OVER"));
+eq("notesBytes.max is the big note size", rep2.notesBytes.max, 500);
+eq("notesBytes.maxId is the big todo", rep2.notesBytes.maxId, "td-big");
+ok("NOTES_OVER suggestion names the offender id", rep2.suggestions.some((s) => s.includes("td-big") && s.includes("trim via todo update")));
+
+// under cap -> no NOTES_OVER (maxId still tracked)
+saveConfig({ version: 1, prune: { defaultAgeDays: 7, hardAgeDays: 180, statuses: ["done", "cancelled"] }, health: { activeMaxOpen: 15, activeStaleDays: 30, parkedMax: 10, parkedStaleDays: 60, archiveMax: 200, archiveOldDays: 180, perProjectDefaultMax: 8, maxNotesBytes: 8192 } });
+const rep3 = healthReport();
+ok("no NOTES_OVER when under cap", !rep3.flags.includes("NOTES_OVER"));
+eq("maxId tracked under cap (biggest note)", rep3.notesBytes.maxId, "td-big");
+
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
