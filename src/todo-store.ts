@@ -19,6 +19,9 @@ import {
 import { dirname } from "node:path";
 import { getLivePath, getTodoDir, getLegacyPath } from "./paths.ts";
 import { migrateIfNeeded, migrateV2ToV3 } from "./migrate.ts";
+import { loadConfig } from "./config.ts";
+import { loadRegistry, getProjectEntry } from "./registry.ts";
+import { checkNotesCap, checkProjectCap } from "./caps.ts";
 
 export type Priority = "low" | "med" | "high" | "critical";
 export type Status = "open" | "in_progress" | "parked" | "done" | "cancelled";
@@ -182,6 +185,19 @@ export function addTodo(input: AddInput): Todo {
   if (input.priority) assertPriority(input.priority);
   const notes = (input.notes ?? "").trim();
   const store = loadStore();
+  // v0.5.0 caps — checked BEFORE any mutation (atomic: nothing is written on breach).
+  const config = loadConfig();
+  checkNotesCap(notes, config.health.maxNotesBytes);
+  const projectTrimmed = (input.project ?? "").trim();
+  if (projectTrimmed !== "") {
+    const reg = loadRegistry();
+    const entry = getProjectEntry(reg, projectTrimmed);
+    const maxOpen = entry?.maxOpen ?? null;
+    if (maxOpen !== null) {
+      const currentOpen = store.todos.filter((t) => t.project === projectTrimmed && t.status === "open").length;
+      checkProjectCap({ project: projectTrimmed, currentOpen, maxOpen });
+    }
+  }
   const todo: Todo = {
     id: genId(),
     title,
@@ -237,6 +253,25 @@ export function listTodos(filter: ListFilter = {}): Todo[] {
 export function updateTodo(id: string, patch: UpdateInput): Todo {
   const store = loadStore();
   const todo = findOrFail(store, id);
+  // v0.5.0 caps — checked BEFORE any mutation (atomic). Notes re-checked only
+  // when notes is being written (so a title edit on a grandfathered oversize
+  // note isn't trapped). Project cap re-checked only on a real move of an
+  // open/in_progress todo (un-park is intentionally NOT re-checked).
+  if (patch.notes !== undefined) {
+    checkNotesCap(patch.notes.trim(), loadConfig().health.maxNotesBytes);
+  }
+  if (patch.project !== undefined) {
+    const target = patch.project.trim();
+    if (target !== todo.project && (todo.status === "open" || todo.status === "in_progress") && target !== "") {
+      const reg = loadRegistry();
+      const entry = getProjectEntry(reg, target);
+      const maxOpen = entry?.maxOpen ?? null;
+      if (maxOpen !== null) {
+        const currentOpen = store.todos.filter((t) => t.project === target && t.status === "open" && t.id !== todo.id).length;
+        checkProjectCap({ project: target, currentOpen, maxOpen });
+      }
+    }
+  }
   if (patch.title !== undefined) todo.title = normalizeTitle(patch.title);
   if (patch.notes !== undefined) todo.notes = patch.notes.trim();
   if (patch.project !== undefined) todo.project = patch.project.trim();

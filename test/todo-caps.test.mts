@@ -85,6 +85,88 @@ eq("overBudget pi maxOpen", over[0]!.maxOpen, 2);
 // empty registry -> none over
 eq("overBudget empty registry", overBudgetProjects(liveTodos, { version: 1, updatedAt: "x", projects: [] }).length, 0);
 
+// ===== addTodo / updateTodo enforcement (integration, temp TODO_DIR) =====
+const { addTodo, updateTodo, getTodo, saveStore, loadStore: loadStoreFn } = await import("../src/todo-store.ts");
+const { setProjectMaxOpen } = await import("../src/registry.ts");
+// (saveRegistry + loadRegistry are already in scope from the pure section above.)
+
+function resetStore(): void { saveStore({ version: 3, updatedAt: new Date().toISOString(), todos: [] }); saveRegistry({ version: 1, updatedAt: "x", projects: [] }); }
+function setCap(project: string, max: number | null): void { const r = loadRegistry(); setProjectMaxOpen(r, project, max); saveRegistry(r); }
+
+// --- notes cap on add ---
+resetStore();
+throws("add with oversized notes throws", () => addTodo({ title: "big", notes: "x".repeat(9000) }), "maxNotesBytes");
+eq("oversized add did not persist (atomic)", loadStoreFn().todos.length, 0);
+notThrows("add with under-cap notes ok", () => addTodo({ title: "ok", notes: "x".repeat(100) }));
+// default cap is 8192; exactly 8192 ok, 8193 throws
+resetStore();
+notThrows("add notes exactly 8192 bytes ok", () => addTodo({ title: "edge", notes: "x".repeat(8192) }));
+resetStore();
+throws("add notes 8193 bytes throws", () => addTodo({ title: "edge", notes: "x".repeat(8193) }));
+
+// --- notes cap on update (only when notes patch present) ---
+// To test grandfathering, seed directly via saveStore bypassing addTodo:
+resetStore();
+saveStore({ version: 3, updatedAt: new Date().toISOString(), todos: [{ id: "legacy", title: "legacy", notes: "z".repeat(9000), project: "", tags: [], priority: "med", status: "open", source: "", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), closedAt: null }] });
+const legacy = getTodo("legacy");
+eq("grandfathered oversize note present", legacy.notes.length, 9000);
+// editing TITLE only (no notes patch) must NOT re-check notes -> succeeds
+notThrows("title edit on grandfathered note ok (no notes re-check)", () => updateTodo("legacy", { title: "new title" }));
+eq("title changed", getTodo("legacy").title, "new title");
+eq("grandfathered notes intact", getTodo("legacy").notes.length, 9000);
+// editing notes (oversize) throws
+throws("update notes oversize throws", () => updateTodo("legacy", { notes: "q".repeat(9000) }), "maxNotesBytes");
+// notes="" always passes
+notThrows("update notes empty clears ok", () => updateTodo("legacy", { notes: "" }));
+eq("notes cleared", getTodo("legacy").notes, "");
+
+// --- project cap on add ---
+resetStore();
+setCap("pi", 2);
+notThrows("add #1 to pi (open 0->1) ok", () => addTodo({ title: "p1", project: "pi" }));
+notThrows("add #2 to pi (open 1->2, lands at cap) ok", () => addTodo({ title: "p2", project: "pi" }));
+throws("add #3 to pi (open 2->3 > maxOpen 2) throws", () => addTodo({ title: "p3", project: "pi" }), "maxOpen");
+eq("blocked add not persisted (atomic)", loadStoreFn().todos.filter((t) => t.project === "pi").length, 2);
+// uncapped project always ok
+notThrows("add to uncapped project ok", () => addTodo({ title: "x", project: "other" }));
+// new/unknown project -> uncapped (no registry entry) -> ok
+resetStore();
+notThrows("add to unknown project (no cap) ok", () => addTodo({ title: "fresh", project: "newproj" }));
+
+// --- project cap on move (update project) ---
+resetStore();
+setCap("pi", 2);
+setCap("sip", 1);
+const m1 = addTodo({ title: "m1", project: "pi" });   // pi open=1
+addTodo({ title: "m2", project: "pi" });                // pi open=2 (at cap)
+// move an OPEN todo from pi into sip (sip at 0->1, under cap 1) -> ok
+notThrows("move open todo into under-cap target ok", () => updateTodo(m1.id, { project: "sip" }));
+eq("sip now 1 open", loadStoreFn().todos.filter((t) => t.project === "sip" && t.status === "open").length, 1);
+// now move another open todo from pi into sip (sip 1->2 > cap 1) -> throws
+const m2 = loadStoreFn().todos.find((t) => t.project === "pi" && t.status === "open")!;
+throws("move open todo into at-cap target throws", () => updateTodo(m2.id, { project: "sip" }), "maxOpen");
+// move a PARKED todo into at-cap target -> ok (no open impact)
+resetStore();
+setCap("sip", 1);
+addTodo({ title: "occ", project: "sip" });               // sip open=1 (at cap)
+const pk = addTodo({ title: "pk", project: "pi" });
+updateTodo(pk.id, { status: "parked" });                  // park it (still in pi)
+notThrows("move PARKED todo into at-cap target ok (no open impact)", () => updateTodo(pk.id, { project: "sip" }));
+eq("parked move persisted to sip", loadStoreFn().todos.find((t) => t.id === pk.id)!.project, "sip");
+// same-project "move" (no-op) -> ok (no cap check)
+resetStore();
+setCap("pi", 1);
+const s = addTodo({ title: "s", project: "pi" });        // pi at cap 1
+notThrows("update same project (no-op) ok", () => updateTodo(s.id, { project: "pi" }));
+// un-park (parked->open) into a capped project -> NOT blocked (intentional)
+resetStore();
+setCap("pi", 1);
+const u = addTodo({ title: "u", project: "pi" });        // pi at cap 1
+updateTodo(u.id, { status: "parked" });                  // pi open=0
+addTodo({ title: "u2", project: "pi" });                 // pi open=1 (at cap again)
+notThrows("un-park into capped project ok (reactivation not blocked)", () => updateTodo(u.id, { status: "open" }));
+eq("un-park persisted (now 2 open, over cap -- allowed)", loadStoreFn().todos.filter((t) => t.project === "pi" && t.status === "open").length, 2);
+
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
