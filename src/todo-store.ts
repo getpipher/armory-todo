@@ -22,7 +22,7 @@ import { migrateIfNeeded, migrateV2ToV3 } from "./migrate.ts";
 import { loadConfig } from "./config.ts";
 import { loadRegistry, getProjectEntry } from "./registry.ts";
 import { checkNotesCap, checkProjectCap, overBudgetProjects } from "./caps.ts";
-import { backupFile, snapshotOnDrop, appendAudit, countTodosInFile } from "./backup.ts";
+import { backupFile, snapshotOnDrop, appendAudit, countTodosInFile, writeWipeAlert } from "./backup.ts";
 
 export type Priority = "low" | "med" | "high" | "critical";
 export type Status = "open" | "in_progress" | "parked" | "done" | "cancelled";
@@ -168,6 +168,7 @@ export function saveStore(store: Store): void {
   }
   renameSync(tmp, path);
   appendAudit("todo", before, after, dropSnap);
+  if (after < before) writeWipeAlert(before, after, dropSnap);
 }
 
 function assertPriority(p: unknown): asserts p is Priority {
