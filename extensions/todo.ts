@@ -27,6 +27,7 @@ import {
   completeTodo,
   deleteTodo,
   clearTodos,
+  getTodo,
   listTodos,
   renderOpenBlock,
   updateTodo,
@@ -38,12 +39,28 @@ import { healthReport } from "../src/health";
 import { hardPrune } from "../src/hard-prune";
 import { TodoPanel } from "../src/panel";
 
-const ACTIONS = ["list", "add", "update", "complete", "delete", "clear", "park", "prune", "restore", "health"] as const;
+const ACTIONS = ["list", "add", "update", "get", "complete", "delete", "clear", "park", "prune", "restore", "health"] as const;
 
 function fmt(t: ReturnType<typeof listTodos>[number]): string {
   const tag = t.project ? ` (${t.project})` : "";
   const pins = t.tags.length ? ` #${t.tags.join(" #")}` : "";
-  return `- [${t.id}] (${t.priority}/${t.status}) ${t.text}${tag}${pins}`;
+  const dot = t.notes.trim() ? " •" : "";
+  return `- [${t.id}] (${t.priority}/${t.status})${dot} ${t.title}${tag}${pins}`;
+}
+
+function fmtFull(t: ReturnType<typeof getTodo>): string {
+  const tag = t.project ? ` (${t.project})` : "";
+  const tags = t.tags.length ? ` #${t.tags.join(" #")}` : "";
+  return [
+    `${t.id} [${t.priority}/${t.status}] ${t.title}${tag}${tags}`,
+    `created: ${t.createdAt}`,
+    `updated: ${t.updatedAt}`,
+    `closed: ${t.closedAt ?? "(open)"}`,
+    `source: ${t.source || "(none)"}`,
+    "",
+    "notes:",
+    t.notes || "(empty)",
+  ].join("\n");
 }
 
 export default function (pi: ExtensionAPI) {
@@ -92,20 +109,24 @@ export default function (pi: ExtensionAPI) {
       "Never put secrets in a TODO — the text reaches the model provider.",
     promptSnippet: "Read/update the global cross-session TODO list (active / parked / archive) + bloat health",
     promptGuidelines: [
-      "Use todo (action:'list') when the user asks 'show me the TODO' / 'what's pending'.",
-      "Use todo (action:'add', text, project?, tags?, priority?, source?) when the user says 'put this in our TODO'.",
+      "Use todo (action:'add', title, notes?, project?, tags?, priority?, source?) when the user says 'put this in our TODO'. title max 120 chars (one-line summary); put long detail in notes.",
+      "Use todo (action:'get', id) to read a todo's full notes before acting on it (the bullet marker in lists means notes exist).",
+      "Use todo (action:'update', id, title?, notes?, project?, tags?, priority?, status?) to edit; notes empty string clears.",
+      "Use todo (action:'list') when the user asks 'show me the TODO' / 'what's pending' (text filter searches title+notes).",
       "Use todo (action:'complete', id) to mark a TODO done; (action:'delete', id) to cancel it.",
       "Use todo (action:'park', id) to defer a TODO (not injected, recoverable); (action:'update', id, status:'open') to un-park.",
       "Use todo (action:'prune') to move done/cancelled todos to the archive (reversible); (action:'prune', all:true) to prune all regardless of age.",
       "Use todo (action:'restore', id) to bring an archived TODO back as open.",
-      "Use todo (action:'list', archived:true) to query the archive — bare call returns a summary; add a filter (project/text/since) for specific items.",
-      "Use todo (action:'health') to check bloat across all boxes — returns counts + flags + suggestions. Run this when the user asks about hygiene/bloat or before any hard-prune.",
-      "Use todo (action:'prune', hard:true, confirm:true, box?, olderThan?) for PERMANENT deletion — the only irreversible action. ALWAYS: run `health` first, show the user the report + the exact proposed command, and wait for an explicit 'yes' before passing confirm:true. Never hard-prune without explicit user confirmation.",
+      "Use todo (action:'list', archived:true) to query the archive; bare call returns a summary, add a filter (project/text/since) for specific items.",
+      "Use todo (action:'health') to check bloat across all boxes (counts + flags + suggestions). Run when the user asks about hygiene/bloat or before any hard-prune.",
+      "Use todo (action:'prune', hard:true, confirm:true, box?, olderThan?) for PERMANENT deletion (the only irreversible action). ALWAYS run health first, show the user the report + the exact proposed command, and wait for an explicit yes before passing confirm:true. Never hard-prune without explicit user confirmation.",
     ],
     parameters: Type.Object({
       action: StringEnum(ACTIONS),
-      id: Type.Optional(Type.String({ description: "Todo id (for update/complete/delete/park/restore)" })),
-      text: Type.Optional(Type.String({ description: "Todo text (add) or new text (update); or substring search (list)" })),
+      id: Type.Optional(Type.String({ description: "Todo id (for update/complete/delete/park/restore/get)" })),
+      title: Type.Optional(Type.String({ description: "Todo title (add required; update optional). Max 120 chars; put detail in notes." })),
+      notes: Type.Optional(Type.String({ description: "Todo notes/body (add/update optional; long-form, not injected). Pass empty string on update to clear." })),
+      text: Type.Optional(Type.String({ description: "Search query (list only). Substring match on title OR notes. Not used by add/update." })),
       project: Type.Optional(Type.String({ description: "Project tag, e.g. 'pi', 'sip', or '' for global" })),
       tags: Type.Optional(Type.Array(Type.String())),
       priority: Type.Optional(StringEnum(["low", "med", "high", "critical"] as const)),
@@ -173,43 +194,50 @@ export default function (pi: ExtensionAPI) {
             return { content: [{ type: "text" as const, text: todos.map(fmt).join("\n") }] };
           }
           case "add": {
-            if (!params.text) {
-              return { content: [{ type: "text" as const, text: "Error: `text` is required for add." }] };
+            if (!params.title) {
+              return { content: [{ type: "text" as const, text: "Error: `title` is required for add." }] };
             }
             const t = addTodo({
-              text: params.text,
+              title: params.title,
+              notes: params.notes,
               project: params.project,
               tags: params.tags,
               priority: params.priority as any,
               source: params.source as any,
             });
-            return { content: [{ type: "text" as const, text: `Added ${t.id}: ${t.text}` }] };
+            return { content: [{ type: "text" as const, text: `Added ${t.id}: ${t.title}` }] };
           }
           case "update": {
             if (!params.id) return { content: [{ type: "text" as const, text: "Error: `id` is required for update." }] };
             const t = updateTodo(params.id, {
-              text: params.text,
+              title: params.title,
+              notes: params.notes,
               project: params.project,
               tags: params.tags,
               priority: params.priority as any,
               status: params.status as any,
             });
-            return { content: [{ type: "text" as const, text: `Updated ${t.id}: ${t.text} [${t.status}]` }] };
+            return { content: [{ type: "text" as const, text: `Updated ${t.id}: ${t.title} [${t.status}]` }] };
+          }
+          case "get": {
+            if (!params.id) return { content: [{ type: "text" as const, text: "Error: `id` is required for get." }] };
+            const t = getTodo(params.id);
+            return { content: [{ type: "text" as const, text: fmtFull(t) }] };
           }
           case "complete": {
             if (!params.id) return { content: [{ type: "text" as const, text: "Error: `id` is required for complete." }] };
             const t = completeTodo(params.id);
-            return { content: [{ type: "text" as const, text: `Completed ${t.id}: ${t.text}` }] };
+            return { content: [{ type: "text" as const, text: `Completed ${t.id}: ${t.title}` }] };
           }
           case "delete": {
             if (!params.id) return { content: [{ type: "text" as const, text: "Error: `id` is required for delete." }] };
             const t = deleteTodo(params.id);
-            return { content: [{ type: "text" as const, text: `Cancelled ${t.id}: ${t.text}` }] };
+            return { content: [{ type: "text" as const, text: `Cancelled ${t.id}: ${t.title}` }] };
           }
           case "park": {
             if (!params.id) return { content: [{ type: "text" as const, text: "Error: `id` is required for park." }] };
             const t = parkTodo(params.id);
-            return { content: [{ type: "text" as const, text: `Parked ${t.id}: ${t.text}` }] };
+            return { content: [{ type: "text" as const, text: `Parked ${t.id}: ${t.title}` }] };
           }
           case "prune": {
             if (params.hard) {
@@ -232,6 +260,7 @@ export default function (pi: ExtensionAPI) {
               `active:  ${report.active.open} open + ${report.active.in_progress} in_progress (${report.active.stale_30d} stale)`,
               `parked:  ${report.parked.count} (${report.parked.stale_60d} stale)`,
               `archive: ${report.archive.count} (${report.archive.older_180d} old)`,
+              `notes:   ${report.notesBytes.total}B total · max ${report.notesBytes.max}B · avg ${report.notesBytes.avg}B`,
               report.flags.length ? `flags: ${report.flags.join(", ")}` : "flags: (none — healthy)",
               ...report.suggestions.map((s) => `  → ${s}`),
             ];
@@ -240,7 +269,7 @@ export default function (pi: ExtensionAPI) {
           case "restore": {
             if (!params.id) return { content: [{ type: "text" as const, text: "Error: `id` is required for restore." }] };
             const t = restoreTodo(params.id);
-            return { content: [{ type: "text" as const, text: `Restored ${t.id}: ${t.text} [open]` }] };
+            return { content: [{ type: "text" as const, text: `Restored ${t.id}: ${t.title} [open]` }] };
           }
           case "clear": {
             const n = clearTodos((params.status as any) ?? "done");
@@ -259,9 +288,9 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("todo", {
     description:
       "Global cross-session TODO list. " +
-      "/todo · /todo all · /todo add <text> · /todo done <id> · /todo rm <id> · " +
-      "/todo park <id> · /todo restore <id> · /todo prune [--all|--hard --box <b> --older-than <d>] · " +
-      "/todo archive [project:X|text:Y] · /todo health · /todo clean · /todo path",
+      "/todo / /todo all / /todo add <title> / /todo done <id> / /todo rm <id> / " +
+      "/todo park <id> / /todo restore <id> / /todo prune [--all|--hard --box <b> --older-than <d>] / " +
+      "/todo archive [project:X|text:Y] / /todo health / /todo clean / /todo path",
     handler: async (args, ctx) => {
       const a = (args ?? "").trim();
       const [sub, ...rest] = a.split(/\s+/);
@@ -273,10 +302,10 @@ export default function (pi: ExtensionAPI) {
           return;
         }
         if (sub === "add") {
-          const text = rest.join(" ").trim();
-          if (!text) { if (ctx.hasUI) ctx.ui.notify("usage: /todo add <text>", "warning"); return; }
-          const t = addTodo({ text, source: "slash" });
-          if (ctx.hasUI) ctx.ui.notify(`Added ${t.id}: ${t.text}`, "info");
+          const title = rest.join(" ").trim();
+          if (!title) { if (ctx.hasUI) ctx.ui.notify("usage: /todo add <title>  (notes via the todo tool)", "warning"); return; }
+          const t = addTodo({ title, source: "slash" });
+          if (ctx.hasUI) ctx.ui.notify(`Added ${t.id}: ${t.title}`, "info");
           return;
         }
         if (sub === "done") {
@@ -297,14 +326,14 @@ export default function (pi: ExtensionAPI) {
           const id = rest[0];
           if (!id) { if (ctx.hasUI) ctx.ui.notify("usage: /todo park <id>", "warning"); return; }
           const t = parkTodo(id);
-          if (ctx.hasUI) ctx.ui.notify(`Parked ${t.id}: ${t.text}`, "info");
+          if (ctx.hasUI) ctx.ui.notify(`Parked ${t.id}: ${t.title}`, "info");
           return;
         }
         if (sub === "restore") {
           const id = rest[0];
           if (!id) { if (ctx.hasUI) ctx.ui.notify("usage: /todo restore <id>", "warning"); return; }
           const t = restoreTodo(id);
-          if (ctx.hasUI) ctx.ui.notify(`Restored ${t.id}: ${t.text}`, "info");
+          if (ctx.hasUI) ctx.ui.notify(`Restored ${t.id}: ${t.title}`, "info");
           return;
         }
         if (sub === "prune") {
@@ -340,6 +369,7 @@ export default function (pi: ExtensionAPI) {
             `  active:  ${report.active.open} open + ${report.active.in_progress} in_progress (${report.active.stale_30d} stale)`,
             `  parked:  ${report.parked.count} (${report.parked.stale_60d} stale)`,
             `  archive: ${report.archive.count} (${report.archive.older_180d} old)`,
+            `  notes:   ${report.notesBytes.total}B total · max ${report.notesBytes.max}B · avg ${report.notesBytes.avg}B`,
             report.flags.length ? `  ⚠ ${report.flags.join(", ")}` : "  ✅ healthy",
             ...report.suggestions.map((s) => `  → ${s}`),
           ];

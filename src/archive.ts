@@ -8,12 +8,13 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { getArchivePath } from "./paths.ts";
+import { migrateV2ToV3 } from "./migrate.ts";
 import type { Todo } from "./todo-store.ts";
 import { loadConfig } from "./config.ts";
 import { loadStore, saveStore, TodoError } from "./todo-store.ts";
 
 export interface ArchiveStore {
-  version: 2;
+  version: 3;
   updatedAt: string;
   todos: Todo[];
 }
@@ -23,7 +24,7 @@ function now(): string {
 }
 
 function emptyArchive(): ArchiveStore {
-  return { version: 2, updatedAt: now(), todos: [] };
+  return { version: 3, updatedAt: now(), todos: [] };
 }
 
 /** Load the archive. Missing file → empty store (no file created). */
@@ -34,6 +35,15 @@ export function loadArchive(): ArchiveStore {
     const raw = readFileSync(path, "utf8");
     const parsed = JSON.parse(raw) as ArchiveStore;
     if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.todos)) {
+      throw new Error("invalid archive shape");
+    }
+    if (parsed.version === 2) {
+      // v2 → v3: curated + fallback, persist once (symmetric with the live store).
+      const migrated = migrateV2ToV3(parsed as any) as unknown as ArchiveStore;
+      saveArchive(migrated);
+      return migrated;
+    }
+    if (parsed.version !== 3) {
       throw new Error("invalid archive shape");
     }
     return parsed;
@@ -190,7 +200,7 @@ export function listArchived(filter: ArchiveListFilter = {}): ArchiveListResult 
   if (filter.status) out = out.filter((t) => t.status === filter.status);
   if (filter.text) {
     const q = filter.text.toLowerCase();
-    out = out.filter((t) => t.text.toLowerCase().includes(q));
+    out = out.filter((t) => t.title.toLowerCase().includes(q) || t.notes.toLowerCase().includes(q));
   }
   if (filter.since) out = out.filter((t) => (t.closedAt ?? t.updatedAt) >= (filter.since as string));
   if (filter.before) out = out.filter((t) => (t.closedAt ?? t.updatedAt) < (filter.before as string));

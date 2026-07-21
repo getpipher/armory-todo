@@ -23,6 +23,12 @@ export interface ArchiveHealth {
   older_180d: number;      // closedAt older than archiveOldDays
 }
 
+export interface NotesBytes {
+  total: number;
+  max: number;
+  avg: number;
+}
+
 export type HealthFlag =
   | "ACTIVE_LARGE" | "ACTIVE_STALE"
   | "PARKED_LARGE" | "PARKED_STALE"
@@ -32,6 +38,7 @@ export interface HealthReport {
   active: ActiveHealth;
   parked: ParkedHealth;
   archive: ArchiveHealth;
+  notesBytes: NotesBytes;
   flags: HealthFlag[];
   suggestions: string[];
 }
@@ -55,6 +62,15 @@ export function healthReport(): HealthReport {
   const parkedStale = parkedTodos.filter((t) => daysAgo(t.updatedAt) > h.parkedStaleDays).length;
   const archiveOld = archive.todos.filter((t) => t.closedAt && daysAgo(t.closedAt) > h.archiveOldDays).length;
 
+  // notes bytes across active + parked (archived excluded — sealed history).
+  const apTodos = [...openTodos, ...ipTodos, ...parkedTodos];
+  const notesSizes = apTodos.map((t) => Buffer.byteLength(t.notes, "utf8"));
+  const notesBytes: NotesBytes = {
+    total: notesSizes.reduce((a, b) => a + b, 0),
+    max: notesSizes.length ? Math.max(...notesSizes) : 0,
+    avg: notesSizes.length ? Math.round(notesSizes.reduce((a, b) => a + b, 0) / notesSizes.length) : 0,
+  };
+
   const active: ActiveHealth = {
     open: openTodos.length,
     in_progress: ipTodos.length,
@@ -77,5 +93,5 @@ export function healthReport(): HealthReport {
   if (parkedStale > 0) suggestions.push(`parked: ${parkedStale} parked > ${h.parkedStaleDays}d → restore or hard-prune`);
   if (actionable.length > h.activeMaxOpen) suggestions.push(`active: ${actionable.length} open+in_progress (max ${h.activeMaxOpen}) → close or park some before adding more`);
 
-  return { active, parked, archive: arch, flags, suggestions };
+  return { active, parked, archive: arch, notesBytes, flags, suggestions };
 }

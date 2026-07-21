@@ -47,6 +47,8 @@ export class TodoPanel extends Container {
   private editMode = false;
   private editInput: Input | null = null;
   private editId = "";
+  private detailMode = false;
+  private detailId = "";
   private settingsList: SettingsList | null = null;
   private config: TodoConfig;
   private healthFlags: string[] = [];
@@ -105,6 +107,20 @@ export class TodoPanel extends Container {
     } else if (this.actionMode && this.actionList) {
       this.addChild(new Text(this.theme.fg("accent", "  Action:"), 0, 0));
       this.addChild(this.actionList);
+    } else if (this.detailMode) {
+      const all = listTodos({ status: "all", limit: 200 });
+      const t = all.find((x) => x.id === this.detailId);
+      if (!t) { this.detailMode = false; this.renderShell(); return; }
+      const proj = t.project || "no project";
+      const tags = t.tags.length ? t.tags.join(" ") : "(none)";
+      const notesText = t.notes || "(empty)";
+      this.addChild(new Text(this.theme.fg("accent", "  " + t.title), 0, 0));
+      this.addChild(new Text(this.theme.fg("muted", "  (" + t.priority + "/" + t.status + ") - " + proj + " - #" + tags), 0, 0));
+      this.addChild(new Spacer(1));
+      this.addChild(new Text(this.theme.fg("dim", "  notes:"), 0, 0));
+      this.addChild(new Text("  " + notesText, 0, 0));
+      this.addChild(new Spacer(1));
+      this.addChild(new Text(this.theme.fg("dim", "  notes: read-only - todo update <id> notes=... to edit"), 0, 0));
     } else if (this.currentBox === "config") {
       this.renderConfigBox();
     } else {
@@ -179,7 +195,7 @@ export class TodoPanel extends Container {
       this.onNotify("Todo not found in the live store (archive restore: use the archive box).", "info");
       return;
     }
-    const acts = actionsForTodo(todo);
+    const acts = [{ label: "View detail", action: "view" }, ...actionsForTodo(todo)];
     const items: SelectItem[] = acts.map((a) => ({ value: a.action, label: a.label }));
     this.actionList = new SelectList(items, 8, {
       selectedPrefix: (s) => this.theme.fg("accent", s),
@@ -194,9 +210,23 @@ export class TodoPanel extends Container {
     this.renderShell();
   }
 
+  private viewDetail(id: string): void {
+    const all = listTodos({ status: "all", limit: 200 });
+    const t = all.find((x) => x.id === id);
+    if (!t) { this.onNotify("Todo not found.", "info"); return; }
+    this.detailId = id;
+    this.detailMode = true;
+    this.actionMode = false;
+    this.actionList = null;
+    this.editMode = false;
+    this.editInput = null;
+    this.renderShell();
+  }
+
   private async executeAction(id: string, action: string): Promise<void> {
     try {
       switch (action) {
+        case "view": this.viewDetail(id); return;
         case "complete": completeTodo(id); this.onNotify(`Completed ${id}`); break;
         case "park": parkTodo(id); this.onNotify(`Parked ${id}`); break;
         case "open": updateTodo(id, { status: "open" as Status }); this.onNotify(`Re-activated ${id}`); break;
@@ -207,9 +237,12 @@ export class TodoPanel extends Container {
           const t = all.find((x) => x.id === id);
           this.editId = id;
           this.editInput = new Input();
-          this.editInput.setValue(t?.text ?? "");
+          this.editInput.setValue(t?.title ?? "");
           this.editInput.onSubmit = (value) => {
-            if (value.trim()) { updateTodo(id, { text: value.trim() }); this.onNotify(`Edited ${id}`); }
+            if (value.trim()) {
+              try { updateTodo(id, { title: value.trim() }); this.onNotify(`Edited ${id}`); }
+              catch (err) { this.onNotify((err as Error).message, "error"); }
+            }
             this.exitEditMode();
           };
           this.editInput.onEscape = () => this.exitEditMode();
@@ -221,7 +254,7 @@ export class TodoPanel extends Container {
         }
       }
     } catch (err) {
-      this.onNotify(`Error: ${(err as Error).message}`, "error");
+      this.onNotify((err as Error).message, "error");
     }
     this.actionMode = false;
     this.actionList = null;
@@ -305,6 +338,17 @@ export class TodoPanel extends Container {
         return;
       }
       this.editInput.handleInput(data);
+      this.invalidate();
+      return;
+    }
+    if (this.detailMode) {
+      if (matchesKey(data, "escape") || matchesKey(data, "esc") || matchesKey(data, "enter") || matchesKey(data, "return")) {
+        this.detailMode = false;
+        this.detailId = "";
+        this.refreshList();
+        this.renderShell();
+        return;
+      }
       this.invalidate();
       return;
     }

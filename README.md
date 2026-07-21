@@ -92,6 +92,10 @@ todos. It's gated three ways:
 Everything else in armory-todo is reversible. `prune --hard` is the one
 irreversible escape hatch, always user-confirmed.
 
+## Title + notes (v0.3.0)
+
+The single `text` field is split into **`title`** (≤120 chars, one-line summary — the only thing injected into the prompt or shown in compact lists) and **`notes`** (any length, the running detail/log — never auto-injected). A hard cap rejects `title` >120 chars at `add`/`update` so the junk-drawer pattern can't re-form. `list` shows titles + a `•` marker when notes exist; `get <id>` reads a todo's full notes before acting on it. v2 `text`-only stores migrate on first load (curated for the 2 known todos + a first-line fallback).
+
 ## Interactive panel (SPEC-3)
 
 Run `/todo` (no arg) in a TUI session to open the interactive triage panel:
@@ -99,7 +103,8 @@ Run `/todo` (no arg) in a TUI session to open the interactive triage panel:
 - **Box tabs** (Tab / Shift+Tab): Active · Parked · Archive · Config
 - **Filter input**: type to search by text (live filter)
 - **SelectList**: arrow keys navigate, Enter selects
-- **Action submenu** (on Enter): Complete / Park / Re-activate / Restore / Edit text / Delete
+- **Action submenu** (on Enter): View detail / Complete / Park / Re-activate / Restore / Edit title / Delete
+- **Detail view** (View detail, or Enter on a row): renders the title + full `notes` read-only, with a footer hint on editing notes via the `todo` tool
 - **Archive box**: summary-first (counts by project + month) → Enter on a bucket to drill down
 - **Config box**: SettingsList with prune ages + health thresholds — edit live, persists to `todo.config.json`
 - **Escape**: exit the panel
@@ -120,7 +125,7 @@ Typed subcommands (`/todo park <id>`, `/todo prune`, etc.) all still work alongs
 ```
 /todo                    list open + in-progress TODOs
 /todo all                include parked/done/cancelled
-/todo add <text>         quick add (priority: med)
+/todo add <title>        quick add (priority: med; notes via the todo tool)
 /todo done <id>          mark done
 /todo rm <id>            cancel (tombstone)
 /todo park <id>          defer (parked — not injected, recoverable)
@@ -138,8 +143,9 @@ Typed subcommands (`/todo park <id>`, `/todo prune`, etc.) all still work alongs
 | action | params | effect |
 |---|---|---|
 | `list` | `statusFilter?`, `projectFilter?`, `tagFilter?`, `text?`, `since?`, `before?`, `limit?`, `page?`, `archived?` | matching TODOs (default: open + in_progress). `archived:true` queries the archive — bare call returns a summary, filters return paginated slices |
-| `add` | `text`, `project?`, `tags?`, `priority?`, `source?` | create a TODO |
-| `update` | `id`, `text?`, `priority?`, `status?`, `project?`, `tags?` | edit a TODO (set `status: parked` to defer) |
+| `add` | `title`, `notes?`, `project?`, `tags?`, `priority?`, `source?` | create a TODO (`title` ≤120 chars; long detail goes in `notes`) |
+| `get` | `id` | read a TODO's full record incl. `notes` |
+| `update` | `id`, `title?`, `notes?`, `priority?`, `status?`, `project?`, `tags?` | edit a TODO (set `status: parked` to defer; `notes=""` clears) |
 | `complete` | `id` | mark done |
 | `delete` | `id` | cancel (tombstone) |
 | `park` | `id` | defer (parked — not injected) |
@@ -149,17 +155,20 @@ Typed subcommands (`/todo park <id>`, `/todo prune`, etc.) all still work alongs
 | `prune` (hard) | `hard:true`, `confirm:true`, `box?`, `olderThan?`, `project?`, `tag?` | PERMANENT deletion — the only irreversible action |
 | `clear` | `status?` (default `done`) | bulk-clear a status (deprecated — use prune) |
 
-Each TODO carries `id, text, project, tags, priority (low|med|high|critical), status (open|in_progress|parked|done|cancelled), source, createdAt, updatedAt, closedAt`.
+Each TODO carries `id, title (≤120 chars), notes (any length), project, tags, priority (low|med|high|critical), status (open|in_progress|parked|done|cancelled), source, createdAt, updatedAt, closedAt`. The auto-injected block + list/panel show `title` only; `notes` is read via `get` and never injected.
 
 ## How it works
 
-- **Disk store** — `~/.pi/agent/todo/` folder: `todo.json` (live: active + parked), `todo-archive.json` (sealed: done + cancelled), `todo.config.json` (prune ages + health thresholds). Atomic `0600` writes, corrupt-file auto-recovery, `version: 2` schema. Not pi session entries, so it outlives any conversation.
+- **Disk store** — `~/.pi/agent/todo/` folder: `todo.json` (live: active + parked), `todo-archive.json` (sealed: done + cancelled), `todo.config.json` (prune ages + health thresholds). Atomic `0600` writes, corrupt-file auto-recovery, `version: 3` schema (`title` ≤120 chars + `notes` any length; v2 `text`-only stores migrate to v3 on first load). Not pi session entries, so it outlives any conversation.
 - **`todo` tool** — model CRUD + lifecycle (above).
 - **`/todo` command** — human triage (above).
 - **Auto-inject** — on every `before_agent_start`, a compact `## Open TODOs (N)` block (titles + ids, capped at 15, sorted by priority) is appended to the system prompt, so the agent starts every turn already aware of pending work. Only `open` + `in_progress` are injected — `parked` and archived todos are excluded (the lifecycle-box boundary). Mutations refresh it on the next turn.
 - **Archive query** — `list` with `archived:true` is summary-first (counts by project + month) then filtered/paginated on demand, so a large archive never bloats a single query.
 
-Full design + decisions: [`docs/superpowers/specs/2026-07-20-lifecycle-boxes-prune-design.md`](docs/superpowers/specs/2026-07-20-lifecycle-boxes-prune-design.md). Original v0.1.0 spec: [`docs/todo-SPEC.md`](docs/todo-SPEC.md).
+Full design + decisions:
+- v0.3.0 (title + notes split): [`docs/superpowers/specs/2026-07-21-title-notes-split-design.md`](docs/superpowers/specs/2026-07-21-title-notes-split-design.md)
+- v0.2.0 (lifecycle boxes + prune + health): [`docs/superpowers/specs/2026-07-20-lifecycle-boxes-prune-design.md`](docs/superpowers/specs/2026-07-20-lifecycle-boxes-prune-design.md)
+- Original v0.1.0 spec: [`docs/todo-SPEC.md`](docs/todo-SPEC.md)
 
 ## Configuration
 
@@ -167,7 +176,12 @@ Full design + decisions: [`docs/superpowers/specs/2026-07-20-lifecycle-boxes-pru
 |---|---|---|
 | `TODO_DIR` | `~/.pi/agent/todo/` | override the store folder (tests / multiple profiles) |
 
-Run the store tests: `npm test` (151/151 across 7 suites).
+Run the store tests: `npm test` (220/220 across 8 suites).
+
+## Known issues
+
+- **No in-panel multi-line `notes` editing.** The panel's inline Edit is single-line (`Input`) for `title` only; `ctx.ui.editor()` from inside `ctx.ui.custom()` triggers a nested-UI bug (`/todo` won't reopen). `notes` is model-managed via the `todo` tool (`action: update, id, notes`). When a safe `ctx.ui.editor()`-from-`custom()` pattern lands in pi-tui, in-panel notes editing is a clean follow-up.
+- **Preventive caps-on-add** (notes length cap + project registry) are deferred to Workstream C (v0.4.0). Until then, `health` reports notes-bytes as a read-only diagnostic.
 
 ## Security
 

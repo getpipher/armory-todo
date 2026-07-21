@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, existsSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, statSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -21,12 +21,12 @@ import { getLivePath } from "../src/paths.ts";
 // --- missing archive → empty store, no file created ---
 const empty = loadArchive();
 eq("missing archive → 0 todos", empty.todos.length, 0);
-eq("archive version 2", empty.version, 2);
+eq("archive version 3", empty.version, 3);
 ok("archive file not created on bare load", !existsSync(join(tmp, "todo-archive.json")));
 
 // --- save + reload round-trip ---
-const sample: Todo = { id: "td-arch1", text: "finished thing", project: "pi", tags: [], priority: "med", status: "done", source: "test", createdAt: "2026-07-01T00:00:00Z", updatedAt: "2026-07-01T00:00:00Z", closedAt: "2026-07-02T00:00:00Z" };
-saveArchive({ version: 2, updatedAt: "2026-07-02T00:00:00Z", todos: [sample] });
+const sample: Todo = { id: "td-arch1", title: "finished thing", notes: "", project: "pi", tags: [], priority: "med", status: "done", source: "test", createdAt: "2026-07-01T00:00:00Z", updatedAt: "2026-07-01T00:00:00Z", closedAt: "2026-07-02T00:00:00Z" };
+saveArchive({ version: 3, updatedAt: "2026-07-02T00:00:00Z", todos: [sample] });
 ok("archive file created on save", existsSync(join(tmp, "todo-archive.json")));
 const reloaded = loadArchive();
 eq("archive reload count", reloaded.todos.length, 1);
@@ -47,11 +47,11 @@ const livePath = getLivePath();
 const oldDate = new Date(Date.now() - 30 * 86400_000).toISOString(); // 30 days ago
 const freshDate = new Date().toISOString();
 writeFileSync(livePath, JSON.stringify({
-  version: 1, updatedAt: freshDate,
+  version: 3, updatedAt: freshDate,
   todos: [
-    { id: "td-old-done", text: "old done", project: "", tags: [], priority: "med", status: "done", source: "", createdAt: oldDate, updatedAt: oldDate, closedAt: oldDate },
-    { id: "td-fresh-done", text: "fresh done", project: "", tags: [], priority: "med", status: "done", source: "", createdAt: freshDate, updatedAt: freshDate, closedAt: freshDate },
-    { id: "td-open", text: "still open", project: "", tags: [], priority: "med", status: "open", source: "", createdAt: freshDate, updatedAt: freshDate, closedAt: null },
+    { id: "td-old-done", title: "old done", notes: "", project: "", tags: [], priority: "med", status: "done", source: "", createdAt: oldDate, updatedAt: oldDate, closedAt: oldDate },
+    { id: "td-fresh-done", title: "fresh done", notes: "", project: "", tags: [], priority: "med", status: "done", source: "", createdAt: freshDate, updatedAt: freshDate, closedAt: freshDate },
+    { id: "td-open", title: "still open", notes: "", project: "", tags: [], priority: "med", status: "open", source: "", createdAt: freshDate, updatedAt: freshDate, closedAt: null },
   ],
 }, null, 2), "utf8");
 
@@ -74,7 +74,7 @@ ok("fresh-done gone after --all", !liveAfter2.todos.some((t) => t.id === "td-fre
 ok("open still in live after --all", liveAfter2.todos.some((t) => t.id === "td-open"));
 
 // cancelled also pruned
-const c1 = addTodo({ text: "to cancel", priority: "low" });
+const c1 = addTodo({ title: "to cancel", priority: "low" });
 deleteTodo(c1.id);
 const result3 = pruneTodos({ all: true });
 ok("prune --all also moved cancelled", result3.moved >= 1);
@@ -123,7 +123,34 @@ const archPage2 = listArchived({ text: "done", limit: 1, page: 2 });
 ok("arch limit=1 page1 has <=1", archPage1.items.length <= 1);
 // text search on archived
 const archSearch = listArchived({ text: "done", limit: 100 });
-ok("arch text search works", archSearch.items.every((t) => t.text.includes("done")));
+ok("arch text search works", archSearch.items.every((t) => t.title.includes("done")));
+
+// --- v2 archive → v3 on load (symmetric with live store) ---
+{
+  const dir = mkdtempSync(join(tmpdir(), "armory-arc-v3-"));
+  process.env.TODO_DIR = dir;
+  const arcFile = join(dir, "todo-archive.json");
+  writeFileSync(arcFile, JSON.stringify({
+    version: 2, updatedAt: "x",
+    todos: [{ id: "td-arc-1", text: "done thing\nwith detail", project: "pi", tags: [], priority: "med", status: "done", source: "", createdAt: "x", updatedAt: "x", closedAt: "2026-07-01T00:00:00Z" }],
+  }), "utf8");
+  const { loadArchive, listArchived } = await import("../src/archive.ts");
+  const arc = loadArchive();
+  ok("archive v2→v3: version 3", arc.version === 3);
+  ok("archive v2→v3: title derived", arc.todos[0]!.title === "done thing");
+  ok("archive v2→v3: notes derived", arc.todos[0]!.notes === "with detail");
+  ok("archive v2→v3: no text field", !("text" in arc.todos[0]!));
+  // persisted to disk
+  const onDisk = JSON.parse(readFileSync(arcFile, "utf8"));
+  ok("archive v2→v3: disk version 3", onDisk.version === 3);
+  // listArchived text filter matches title OR notes
+  const byTitle = listArchived({ text: "done thing", limit: 50 });
+  ok("archive listArchived text matches title", byTitle.items.some((t) => t.title === "done thing"));
+  const byNotes = listArchived({ text: "with detail", limit: 50 });
+  ok("archive listArchived text matches notes", byNotes.items.some((t) => t.notes === "with detail"));
+  delete process.env.TODO_DIR;
+  rmSync(dir, { recursive: true, force: true });
+}
 
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);

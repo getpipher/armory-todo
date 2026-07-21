@@ -68,6 +68,42 @@ const clean = healthReport();
 eq("clean active open", clean.active.open, 0);
 eq("clean flags empty", clean.flags.length, 0);
 
+// --- notesBytes: total/max/avg across active+parked (archived excluded) ---
+{
+  const dir = mkdtempSync(join(tmpdir(), "armory-health-notes-"));
+  process.env.TODO_DIR = dir;
+  const { addTodo, completeTodo, parkTodo } = await import("../src/todo-store.ts");
+  const { pruneTodos } = await import("../src/archive.ts");
+  const { healthReport: hr2 } = await import("../src/health.ts");
+  addTodo({ title: "a", notes: "short" });                       // 5 bytes
+  addTodo({ title: "b", notes: "x".repeat(100) });               // 100 bytes
+  const parked = addTodo({ title: "c", notes: "y".repeat(40) }); // 40 bytes
+  parkTodo(parked.id);
+  const done = addTodo({ title: "d", notes: "z".repeat(999) });  // archived-excluded
+  completeTodo(done.id);
+  pruneTodos({ all: true });
+  const r = hr2();
+  ok("notesBytes: total = 5+100+40", r.notesBytes.total === 145);
+  ok("notesBytes: max = 100", r.notesBytes.max === 100);
+  ok("notesBytes: avg = round(145/3) = 48", r.notesBytes.avg === 48);
+  ok("notesBytes: excludes archived (999 not in total)", r.notesBytes.total < 999);
+  delete process.env.TODO_DIR;
+  rmSync(dir, { recursive: true, force: true });
+}
+
+// --- notesBytes: empty store -> zeros ---
+{
+  const dir = mkdtempSync(join(tmpdir(), "armory-health-empty-"));
+  process.env.TODO_DIR = dir;
+  const { healthReport: hr3 } = await import("../src/health.ts");
+  const r = hr3();
+  eq("notesBytes empty: total 0", r.notesBytes.total, 0);
+  eq("notesBytes empty: max 0", r.notesBytes.max, 0);
+  eq("notesBytes empty: avg 0", r.notesBytes.avg, 0);
+  delete process.env.TODO_DIR;
+  rmSync(dir, { recursive: true, force: true });
+}
+
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
