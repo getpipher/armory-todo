@@ -1,7 +1,7 @@
 # Workstream v0.3.1 — auto-prune on session_start + unified `Done` view
 
 **Date:** 2026-07-21
-**Status:** Design approved → pending implementation plan
+**Status:** Shipped (v0.3.1, PR #5, 2026-07-21)
 **Branch:** `feat/auto-prune-done-view` off `main`
 **Predecessor:** v0.3.0 (title + notes split), shipped 2026-07-21 (PR #4)
 **Target ship:** v0.3.1, auto-published via `release.yml` on `v0.3.1` tag (now also creates a GitHub Release)
