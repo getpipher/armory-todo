@@ -4,6 +4,7 @@
 
 import type { SelectItem, SettingItem } from "@earendil-works/pi-tui";
 import type { Todo } from "./todo-store.ts";
+import type { DoneItem } from "./archive.ts";
 import type { ArchiveSummary } from "./archive.ts";
 import type { TodoConfig } from "./config.ts";
 
@@ -60,4 +61,21 @@ export function configToSettingItems(cfg: TodoConfig): SettingItem[] {
     { id: "archiveMax", label: "Archive max", currentValue: String(cfg.health.archiveMax), values: ["100", "200", "500"], description: "Bloat flag when archive exceeds this." },
     { id: "archiveOldDays", label: "Archive old (days)", currentValue: String(cfg.health.archiveOldDays), values: ["90", "180", "365"], description: "Bloat flag when archive items older than this." },
   ];
+}
+
+/** Format a done todo (live or archived) as a SelectList item with a
+ *  location tag: "[live Nd]" or "[archived YYYY-MM-DD]". */
+export function todoDoneItem(d: DoneItem): SelectItem {
+  const proj = d.project ? ` (${d.project})` : "";
+  const loc = d.location === "archive" && d.archivedAt
+    ? ` [archived ${d.archivedAt.slice(0, 10)}]`
+    : ` [live ${d.closedAt ? Math.floor((Date.now() - Date.parse(d.closedAt)) / 86400_000) : 0}d]`;
+  return { value: d.id, label: `[${d.id}] (done)${proj}${loc} ${d.title}` };
+}
+
+/** Actions for a done todo: View detail always; Restore only if archived. */
+export function actionsForDoneTodo(d: DoneItem): { label: string; action: string }[] {
+  const acts: { label: string; action: string }[] = [{ label: "View detail", action: "view" }];
+  if (d.location === "archive") acts.push({ label: "Restore (from archive)", action: "restore" });
+  return acts;
 }
