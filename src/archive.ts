@@ -226,3 +226,41 @@ export function listArchived(filter: ArchiveListFilter = {}): ArchiveListResult 
   const start = (page - 1) * limit;
   return { items: sorted.slice(start, start + limit), total };
 }
+
+export interface DoneItem extends Todo {
+  location: "live" | "archive";
+  archivedAt: string | null;
+}
+
+export interface DoneFilter {
+  text?: string;       // title OR notes substring (case-insensitive)
+  project?: string;
+  since?: string;      // closedAt >= since
+  before?: string;     // closedAt < before
+  limit?: number;      // default 50
+  page?: number;       // default 1
+}
+
+/** Unified done todos across the live store + the archive. Excludes cancelled
+ *  (Done = finished work). Sorted newest-closed first. */
+export function listDoneUnified(filter: DoneFilter = {}): DoneItem[] {
+  const live = loadStore().todos.filter((t) => t.status === "done");
+  const arch = loadArchive().todos.filter((t) => t.status === "done");
+  const items: DoneItem[] = [
+    ...live.map((t) => ({ ...t, location: "live" as const, archivedAt: null })),
+    ...arch.map((t) => ({ ...t, location: "archive" as const, archivedAt: t.closedAt })),
+  ];
+  let out = items;
+  if (filter.text) {
+    const q = filter.text.toLowerCase();
+    out = out.filter((t) => t.title.toLowerCase().includes(q) || t.notes.toLowerCase().includes(q));
+  }
+  if (filter.project) out = out.filter((t) => t.project === filter.project);
+  if (filter.since) out = out.filter((t) => (t.closedAt ?? t.updatedAt) >= (filter.since as string));
+  if (filter.before) out = out.filter((t) => (t.closedAt ?? t.updatedAt) < (filter.before as string));
+  const sorted = out.slice().sort((a, b) => (b.closedAt ?? b.updatedAt).localeCompare(a.closedAt ?? a.updatedAt));
+  const limit = filter.limit ?? 50;
+  const page = filter.page ?? 1;
+  const start = (page - 1) * limit;
+  return sorted.slice(start, start + limit);
+}
