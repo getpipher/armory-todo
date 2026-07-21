@@ -104,6 +104,43 @@ eq("clean flags empty", clean.flags.length, 0);
   rmSync(dir, { recursive: true, force: true });
 }
 
+// --- per-project flags (v0.4.0) ---
+{
+  const dir = mkdtempSync(join(tmpdir(), "armory-health-proj-"));
+  process.env.TODO_DIR = dir;
+  const { addTodo } = await import("../src/todo-store.ts");
+  const { setProjectMaxOpen, loadRegistry, saveRegistry } = await import("../src/registry.ts");
+  const { healthReport: hr4 } = await import("../src/health.ts");
+
+  // PROJECT_OVER: maxOpen 1, 2 open
+  addTodo({ title: "p1", project: "over-proj" });
+  addTodo({ title: "p2", project: "over-proj" });
+  const reg = loadRegistry();
+  setProjectMaxOpen(reg, "over-proj", 1);
+  saveRegistry(reg);
+
+  // PROJECT_LARGE: 9 open (> perProjectDefaultMax 8), maxOpen null
+  for (let i = 0; i < 9; i++) addTodo({ title: `large-${i}`, project: "large-proj" });
+
+  // PROJECT_TYPO: 1 todo + near sibling
+  addTodo({ title: "typo", project: "getpither" });
+  addTodo({ title: "sib", project: "getpipher" });
+
+  const r = hr4();
+  ok("PROJECT_OVER flag", r.flags.includes("PROJECT_OVER"));
+  ok("PROJECT_LARGE flag (9 > 8)", r.flags.includes("PROJECT_LARGE"));
+  ok("PROJECT_TYPO flag", r.flags.includes("PROJECT_TYPO"));
+  ok("health.projects populated", r.projects.length > 0);
+  ok("noProject.open is a number", typeof r.noProject.open === "number");
+  ok("suggestion mentions rename for typo", r.suggestions.some((s) => s.includes("rename")));
+  ok("over-proj in projects[] (over)", r.projects.some((p) => p.name === "over-proj" && p.over));
+  ok("large-proj in projects[] (large)", r.projects.some((p) => p.name === "large-proj" && p.large));
+  ok("getpither in projects[] (typo)", r.projects.some((p) => p.name === "getpither" && p.typo));
+
+  delete process.env.TODO_DIR;
+  rmSync(dir, { recursive: true, force: true });
+}
+
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
