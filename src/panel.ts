@@ -241,7 +241,7 @@ export class TodoPanel extends Container {
         this.projectEditKind = action;
         this.projectEditName = name;
         this.editInput = new Input();
-        this.editInput.setValue(action === "rename" ? name : "");
+        this.editInput.setValue("");   // don't pre-fill: setValue leaves cursor at 0 (typing would prepend); the prompt labels the target
         this.editInput.onSubmit = (value) => {
           try {
             if (this.projectEditKind === "rename") {
