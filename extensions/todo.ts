@@ -40,8 +40,10 @@ import { hardPrune } from "../src/hard-prune";
 import { TodoPanel } from "../src/panel";
 import { autoPruneOnSessionStart } from "../src/auto-prune";
 import { loadConfig } from "../src/config";
+import { projectsOverview } from "../src/projects";
+import { renameProject } from "../src/registry";
 
-const ACTIONS = ["list", "add", "update", "get", "complete", "delete", "clear", "park", "prune", "restore", "health"] as const;
+const ACTIONS = ["list", "add", "update", "get", "complete", "delete", "clear", "park", "prune", "restore", "health", "projects", "project_rename"] as const;
 
 function fmt(t: ReturnType<typeof listTodos>[number]): string {
   const tag = t.project ? ` (${t.project})` : "";
@@ -143,6 +145,8 @@ export default function (pi: ExtensionAPI) {
       "Use todo (action:'list', archived:true) to query the archive; bare call returns a summary, add a filter (project/text/since) for specific items.",
       "Use todo (action:'health') to check bloat across all boxes (counts + flags + suggestions). Run when the user asks about hygiene/bloat or before any hard-prune.",
       "Use todo (action:'prune', hard:true, confirm:true, box?, olderThan?) for PERMANENT deletion (the only irreversible action). ALWAYS run health first, show the user the report + the exact proposed command, and wait for an explicit yes before passing confirm:true. Never hard-prune without explicit user confirmation.",
+      "Use todo (action:'projects') for a per-project scope overview (open/in_progress/parked/done counts + maxOpen + OVER/?typo markers). Run when the user asks 'which projects have open work' or to see backlog shape by project.",
+      "Use todo (action:'project_rename', oldName, newName) to rename or merge a project (rewrites live + archive + registry). Use it to fix typo'd project strings (e.g. getpither → getpipher). Rename onto an existing name merges (consolidates the old project into the new). Advisory maxOpen caps are NOT enforced in v0.4.0 — they only drive a health flag; enforcement lands in v0.5.0.",
     ],
     parameters: Type.Object({
       action: StringEnum(ACTIONS),
@@ -171,6 +175,9 @@ export default function (pi: ExtensionAPI) {
       confirm: Type.Optional(Type.Boolean({ description: "hard-prune: must be true to execute. Always surface the health report + proposed command and wait for explicit user confirmation first." })),
       box: Type.Optional(StringEnum(["archive", "active", "parked"] as const, { description: "hard-prune: which box to target (default archive)" })),
       olderThan: Type.Optional(Type.Number({ description: "hard-prune: delete items older than this many days (by closedAt for archive, updatedAt for active/parked)" })),
+      // project actions (v0.4.0)
+      oldName: Type.Optional(Type.String({ description: "project_rename: current project name" })),
+      newName: Type.Optional(Type.String({ description: "project_rename: new project name (merge if it already exists)" })),
     }),
     async execute(_toolCallId, params) {
       try {
@@ -296,13 +303,22 @@ export default function (pi: ExtensionAPI) {
           }
           case "health": {
             const report = healthReport();
+            const projLines = report.projects.length
+              ? [`projects:`, ...report.projects.map((p) => {
+                  const cap = p.maxOpen !== null ? ` [max:${p.maxOpen}]` : "";
+                  const flags = [p.over && "OVER", p.large && "LARGE", p.stale && "STALE", p.typo && "TYPO"].filter(Boolean).join(" ");
+                  return `  ${p.name}  ${p.open} open${cap}${flags ? ` ${flags}` : ""}`;
+                })]
+              : [];
             const lines = [
               `## TODO Health Report`,
               `active:  ${report.active.open} open + ${report.active.in_progress} in_progress (${report.active.stale_30d} stale)`,
               `parked:  ${report.parked.count} (${report.parked.stale_60d} stale)`,
               `archive: ${report.archive.count} (${report.archive.older_180d} old)`,
               `notes:   ${report.notesBytes.total}B total · max ${report.notesBytes.max}B · avg ${report.notesBytes.avg}B`,
+              `(no project): ${report.noProject.open} open`,
               report.flags.length ? `flags: ${report.flags.join(", ")}` : "flags: (none — healthy)",
+              ...projLines,
               ...report.suggestions.map((s) => `  → ${s}`),
             ];
             return { content: [{ type: "text" as const, text: lines.join("\n") }] };
@@ -315,6 +331,25 @@ export default function (pi: ExtensionAPI) {
           case "clear": {
             const n = clearTodos((params.status as any) ?? "done");
             return { content: [{ type: "text" as const, text: `Cleared ${n} '${params.status ?? "done"}' TODOs.` }] };
+          }
+          case "projects": {
+            const o = projectsOverview();
+            const rows = o.rows.map((r) => {
+              const cap = r.maxOpen !== null ? ` [max:${r.maxOpen}]` : "";
+              const over = r.over ? " OVER" : "";
+              const typo = r.typo ? " ?typo" : "";
+              return `  ${r.name}  ${r.open}o/${r.in_progress}i/${r.parked}p/${r.done}d (total ${r.total})${cap}${over}${typo}`;
+            });
+            const np = `(no project): ${o.noProject.count} total · ${o.noProject.open} open`;
+            const text = rows.length ? `Projects (${o.rows.length}):\n${rows.join("\n")}\n${np}` : `Projects: (none)\n${np}`;
+            return { content: [{ type: "text" as const, text }] };
+          }
+          case "project_rename": {
+            if (!params.oldName || !params.newName) {
+              return { content: [{ type: "text" as const, text: "Error: `oldName` and `newName` are required for project_rename." }] };
+            }
+            const r = renameProject(params.oldName, params.newName);
+            return { content: [{ type: "text" as const, text: `Renamed ${params.oldName} → ${r.newName}: ${r.liveRenamed} live + ${r.archivedRenamed} archived${r.merged ? " (merged)" : ""}` }] };
           }
           default:
             return { content: [{ type: "text" as const, text: `Unknown action: ${params.action}` }] };
@@ -331,7 +366,7 @@ export default function (pi: ExtensionAPI) {
       "Global cross-session TODO list. " +
       "/todo / /todo all / /todo add <title> / /todo done <id> / /todo rm <id> / " +
       "/todo park <id> / /todo restore <id> / /todo prune [--all|--hard --box <b> --older-than <d>] / " +
-      "/todo archive [project:X|text:Y] / /todo finished / /todo health / /todo clean / /todo path",
+      "/todo archive [project:X|text:Y] / /todo finished / /todo projects / /todo health / /todo clean / /todo path",
     handler: async (args, ctx) => {
       const a = (args ?? "").trim();
       const [sub, ...rest] = a.split(/\s+/);
@@ -410,13 +445,22 @@ export default function (pi: ExtensionAPI) {
         }
         if (sub === "health") {
           const report = healthReport();
+          const projLines = report.projects.length
+            ? [`  projects:`, ...report.projects.map((p) => {
+                const cap = p.maxOpen !== null ? ` [max:${p.maxOpen}]` : "";
+                const flags = [p.over && "OVER", p.large && "LARGE", p.stale && "STALE", p.typo && "TYPO"].filter(Boolean).join(" ");
+                return `    ${p.name}  ${p.open} open${cap}${flags ? ` ${flags}` : ""}`;
+              })]
+            : [];
           const lines = [
             `TODO Health:`,
             `  active:  ${report.active.open} open + ${report.active.in_progress} in_progress (${report.active.stale_30d} stale)`,
             `  parked:  ${report.parked.count} (${report.parked.stale_60d} stale)`,
             `  archive: ${report.archive.count} (${report.archive.older_180d} old)`,
             `  notes:   ${report.notesBytes.total}B total · max ${report.notesBytes.max}B · avg ${report.notesBytes.avg}B`,
+            `  (no project): ${report.noProject.open} open`,
             report.flags.length ? `  ⚠ ${report.flags.join(", ")}` : "  ✅ healthy",
+            ...projLines,
             ...report.suggestions.map((s) => `  → ${s}`),
           ];
           if (ctx.hasUI) ctx.ui.notify(lines.join("\n"), "info");
@@ -461,6 +505,19 @@ export default function (pi: ExtensionAPI) {
         }
         if (sub === "path") {
           if (ctx.hasUI) ctx.ui.notify(`store: ${getStorePath()}`, "info");
+          return;
+        }
+        if (sub === "projects") {
+          const o = projectsOverview();
+          const rows = o.rows.map((r) => {
+            const cap = r.maxOpen !== null ? ` [max:${r.maxOpen}]` : "";
+            const over = r.over ? " OVER" : "";
+            const typo = r.typo ? " ?typo" : "";
+            return `  ${r.name}  ${r.open}o/${r.in_progress}i/${r.parked}p/${r.done}d (total ${r.total})${cap}${over}${typo}`;
+          });
+          const np = `(no project): ${o.noProject.count} total · ${o.noProject.open} open`;
+          const msg = rows.length ? `Projects (${o.rows.length}):\n${rows.join("\n")}\n${np}` : `Projects: (none)\n${np}`;
+          if (ctx.hasUI) ctx.ui.notify(msg, "info");
           return;
         }
         // default: open the interactive panel (TUI) or list open (non-TUI)
