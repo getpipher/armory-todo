@@ -79,9 +79,17 @@ export interface PruneInput {
   statuses?: ("done" | "cancelled")[];
 }
 
+export interface PruneItem {
+  id: string;
+  status: "done" | "cancelled";
+  title: string;
+  ageDays: number;
+}
+
 export interface PruneResult {
   moved: number;
   ids: string[];
+  items: PruneItem[];
 }
 
 /**
@@ -118,14 +126,20 @@ export function pruneTodos(opts: PruneInput = {}): PruneResult {
     moved.push(todo);
   }
 
-  if (moved.length === 0) return { moved: 0, ids: [] };
+  if (moved.length === 0) return { moved: 0, ids: [], items: [] };
 
   live.todos = kept;
   archive.todos.push(...moved);
   saveStore(live);
   saveArchive(archive);
 
-  return { moved: moved.length, ids: moved.map((t) => t.id) };
+  const items: PruneItem[] = moved.map((t) => ({
+    id: t.id,
+    status: t.status as "done" | "cancelled",
+    title: t.title,
+    ageDays: t.closedAt ? Math.floor((Date.now() - Date.parse(t.closedAt)) / 86400_000) : 0,
+  }));
+  return { moved: moved.length, ids: moved.map((t) => t.id), items };
 }
 
 /**
@@ -211,4 +225,42 @@ export function listArchived(filter: ArchiveListFilter = {}): ArchiveListResult 
   const page = filter.page ?? 1;
   const start = (page - 1) * limit;
   return { items: sorted.slice(start, start + limit), total };
+}
+
+export interface DoneItem extends Todo {
+  location: "live" | "archive";
+  archivedAt: string | null;
+}
+
+export interface DoneFilter {
+  text?: string;       // title OR notes substring (case-insensitive)
+  project?: string;
+  since?: string;      // closedAt >= since
+  before?: string;     // closedAt < before
+  limit?: number;      // default 50
+  page?: number;       // default 1
+}
+
+/** Unified done todos across the live store + the archive. Excludes cancelled
+ *  (Done = finished work). Sorted newest-closed first. */
+export function listDoneUnified(filter: DoneFilter = {}): DoneItem[] {
+  const live = loadStore().todos.filter((t) => t.status === "done");
+  const arch = loadArchive().todos.filter((t) => t.status === "done");
+  const items: DoneItem[] = [
+    ...live.map((t) => ({ ...t, location: "live" as const, archivedAt: null })),
+    ...arch.map((t) => ({ ...t, location: "archive" as const, archivedAt: t.closedAt })),
+  ];
+  let out = items;
+  if (filter.text) {
+    const q = filter.text.toLowerCase();
+    out = out.filter((t) => t.title.toLowerCase().includes(q) || t.notes.toLowerCase().includes(q));
+  }
+  if (filter.project) out = out.filter((t) => t.project === filter.project);
+  if (filter.since) out = out.filter((t) => (t.closedAt ?? t.updatedAt) >= (filter.since as string));
+  if (filter.before) out = out.filter((t) => (t.closedAt ?? t.updatedAt) < (filter.before as string));
+  const sorted = out.slice().sort((a, b) => (b.closedAt ?? b.updatedAt).localeCompare(a.closedAt ?? a.updatedAt));
+  const limit = filter.limit ?? 50;
+  const page = filter.page ?? 1;
+  const start = (page - 1) * limit;
+  return sorted.slice(start, start + limit);
 }

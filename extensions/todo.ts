@@ -34,10 +34,12 @@ import {
   parkTodo,
   getStorePath,
 } from "../src/todo-store";
-import { pruneTodos, restoreTodo, listArchived, archiveSummary } from "../src/archive";
+import { pruneTodos, restoreTodo, listArchived, archiveSummary, listDoneUnified } from "../src/archive";
 import { healthReport } from "../src/health";
 import { hardPrune } from "../src/hard-prune";
 import { TodoPanel } from "../src/panel";
+import { autoPruneOnSessionStart } from "../src/auto-prune";
+import { loadConfig } from "../src/config";
 
 const ACTIONS = ["list", "add", "update", "get", "complete", "delete", "clear", "park", "prune", "restore", "health"] as const;
 
@@ -63,19 +65,39 @@ function fmtFull(t: ReturnType<typeof getTodo>): string {
   ].join("\n");
 }
 
+function fmtDone(d: ReturnType<typeof listDoneUnified>[number]): string {
+  const tag = d.project ? ` (${d.project})` : "";
+  const loc = d.location === "archive" && d.archivedAt
+    ? ` [archived ${d.archivedAt.slice(0, 10)}]`
+    : ` [live ${d.closedAt ? Math.floor((Date.now() - Date.parse(d.closedAt)) / 86400_000) : 0}d]`;
+  return `- [${d.id}] (done)${tag} ${d.title}${loc}`;
+}
+
 export default function (pi: ExtensionAPI) {
   // Warm + report on session start (every new/resume/fork/reload).
   pi.on("session_start", async (_event, ctx) => {
     try {
+      let autoMsg = "";
+      let ageDays = 7;
+      try {
+        ageDays = loadConfig().prune.defaultAgeDays;
+        const ap = autoPruneOnSessionStart();
+        if (ap) {
+          const lines = ap.items.map((i) => `  [${i.id}] ${i.status}  ${i.title}`);
+          autoMsg = ` · auto-pruned ${ap.moved} stale done (>${ageDays}d):\n${lines.join("\n")}\nUndo any with: todo restore <id>`;
+        }
+      } catch {
+        // auto-prune optional — don't crash the session notify
+      }
       const open = listTodos();
-      let msg = `armory-todo: ${open.length} open TODO${open.length === 1 ? "" : "s"}`;
+      let msg = `armory-todo: ${open.length} open TODO${open.length === 1 ? "" : "s"}${autoMsg}`;
       try {
         const report = healthReport();
         if (report.flags.length > 0) {
-          msg += ` — ⚠ ${report.flags.length} bloat signal${report.flags.length === 1 ? "" : "s"} (run /todo health)`;
+          msg += `${autoMsg ? "\n" : " — "}` + `⚠ ${report.flags.length} bloat signal${report.flags.length === 1 ? "" : "s"} (run /todo health)`;
         }
       } catch {
-        // health check optional — don't crash the session notify
+        // health check optional
       }
       if (ctx.hasUI) ctx.ui.notify(msg, "info");
     } catch {
@@ -116,6 +138,7 @@ export default function (pi: ExtensionAPI) {
       "Use todo (action:'complete', id) to mark a TODO done; (action:'delete', id) to cancel it.",
       "Use todo (action:'park', id) to defer a TODO (not injected, recoverable); (action:'update', id, status:'open') to un-park.",
       "Use todo (action:'prune') to move done/cancelled todos to the archive (reversible); (action:'prune', all:true) to prune all regardless of age.",
+      "Done/cancelled todos older than the prune age (default 7d) auto-archive on session start — you'll see a notify; reversible via todo restore <id>. Use /todo finished or todo list status:'done' to see all finished work (live + archived).",
       "Use todo (action:'restore', id) to bring an archived TODO back as open.",
       "Use todo (action:'list', archived:true) to query the archive; bare call returns a summary, add a filter (project/text/since) for specific items.",
       "Use todo (action:'health') to check bloat across all boxes (counts + flags + suggestions). Run when the user asks about hygiene/bloat or before any hard-prune.",
@@ -153,6 +176,20 @@ export default function (pi: ExtensionAPI) {
       try {
         switch (params.action) {
           case "list": {
+            if (params.status === "done" && !params.archived) {
+              const items = listDoneUnified({
+                text: params.text,
+                project: params.projectFilter,
+                since: params.since,
+                before: params.before,
+                limit: params.limit,
+                page: params.page,
+              });
+              if (items.length === 0) {
+                return { content: [{ type: "text" as const, text: "No done TODOs (live or archive)." }] };
+              }
+              return { content: [{ type: "text" as const, text: `Done (${items.length}):\n${items.map(fmtDone).join("\n")}` }] };
+            }
             if (params.archived) {
               const res = listArchived({
                 project: params.projectFilter,
@@ -251,7 +288,11 @@ export default function (pi: ExtensionAPI) {
               return { content: [{ type: "text" as const, text: res.message + (res.refused ? "" : ` Deleted: ${res.ids.join(", ") || "(none)"}`) }] };
             }
             const res = pruneTodos({ ageDays: params.ageDays, all: params.all });
-            return { content: [{ type: "text" as const, text: `Pruned ${res.moved} todo${res.moved === 1 ? "" : "s"} to archive: ${res.ids.join(", ") || "(none)"}` }] };
+            if (res.moved === 0) {
+              return { content: [{ type: "text" as const, text: "Nothing to prune (no stale done/cancelled)." }] };
+            }
+            const prunedLines = res.items.map((i) => `  [${i.id}] ${i.status}  ${i.title}  (was ${i.ageDays}d old)`);
+            return { content: [{ type: "text" as const, text: `Pruned ${res.moved} todo${res.moved === 1 ? "" : "s"} to archive:\n${prunedLines.join("\n")}\nUndo any with: todo restore <id>` }] };
           }
           case "health": {
             const report = healthReport();
@@ -290,7 +331,7 @@ export default function (pi: ExtensionAPI) {
       "Global cross-session TODO list. " +
       "/todo / /todo all / /todo add <title> / /todo done <id> / /todo rm <id> / " +
       "/todo park <id> / /todo restore <id> / /todo prune [--all|--hard --box <b> --older-than <d>] / " +
-      "/todo archive [project:X|text:Y] / /todo health / /todo clean / /todo path",
+      "/todo archive [project:X|text:Y] / /todo finished / /todo health / /todo clean / /todo path",
     handler: async (args, ctx) => {
       const a = (args ?? "").trim();
       const [sub, ...rest] = a.split(/\s+/);
@@ -359,7 +400,12 @@ export default function (pi: ExtensionAPI) {
           }
           const all = rest.includes("--all");
           const res = pruneTodos({ all });
-          if (ctx.hasUI) ctx.ui.notify(`Pruned ${res.moved} todo${res.moved === 1 ? "" : "s"} to archive: ${res.ids.join(", ") || "(none)"}`, "info");
+          if (ctx.hasUI) {
+            const msg = res.moved === 0
+              ? "Nothing to prune."
+              : `Pruned ${res.moved} to archive:\n${res.items.map((i) => `  [${i.id}] ${i.title} (${i.ageDays}d)`).join("\n")}\nUndo: todo restore <id>`;
+            ctx.ui.notify(msg, "info");
+          }
           return;
         }
         if (sub === "health") {
@@ -400,6 +446,12 @@ export default function (pi: ExtensionAPI) {
             : listArchived({ text: filterArg, limit: 50 });
           const msg = res.items.length ? res.items.map(fmt).join("\n") : "(no archived items match)";
           if (ctx.hasUI) ctx.ui.notify(`Archived (${res.total} total):\n${msg}`, "info");
+          return;
+        }
+        if (sub === "finished") {
+          const items = listDoneUnified({ text: rest.join(" ").trim() || undefined, limit: 100 });
+          const msg = items.length ? `Done (${items.length}):\n${items.map(fmtDone).join("\n")}` : "(no done TODOs)";
+          if (ctx.hasUI) ctx.ui.notify(msg, "info");
           return;
         }
         if (sub === "clean") {

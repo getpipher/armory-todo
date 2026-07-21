@@ -152,6 +152,69 @@ ok("arch text search works", archSearch.items.every((t) => t.title.includes("don
   rmSync(dir, { recursive: true, force: true });
 }
 
+// --- pruneTodos rich result (items + ageDays) ---
+{
+  const dir = mkdtempSync(join(tmpdir(), "armory-prune-rich-"));
+  process.env.TODO_DIR = dir;
+  const { pruneTodos } = await import("../src/archive.ts");
+  const { addTodo, completeTodo, deleteTodo, loadStore, saveStore } = await import("../src/todo-store.ts");
+  const { loadArchive } = await import("../src/archive.ts");
+  const old = addTodo({ title: "old done", notes: "x" }); completeTodo(old.id);
+  const fresh = addTodo({ title: "fresh done", notes: "y" }); completeTodo(fresh.id);
+  const cancelled = addTodo({ title: "cancelled old", notes: "z" }); deleteTodo(cancelled.id);
+  const st = loadStore();
+  const thirtyAgo = new Date(Date.now() - 30 * 86400_000).toISOString();
+  for (const t of st.todos) {
+    if (t.id === old.id || t.id === cancelled.id) { t.closedAt = thirtyAgo; t.updatedAt = thirtyAgo; }
+  }
+  saveStore(st);
+  const res = pruneTodos({ ageDays: 7 });
+  ok("rich: moved 2 (old done + old cancelled; fresh stays)", res.moved === 2);
+  ok("rich: items length matches moved", res.items.length === res.moved);
+  ok("rich: items have title", res.items.every((i) => typeof i.title === "string" && i.title.length > 0));
+  ok("rich: items have status done|cancelled", res.items.every((i) => i.status === "done" || i.status === "cancelled"));
+  const oldItem = res.items.find((i) => i.id === old.id)!;
+  ok("rich: old done ageDays ~30", oldItem.ageDays >= 29 && oldItem.ageDays <= 31);
+  ok("rich: ids still present (back-compat)", res.ids.length === res.moved);
+  ok("rich: fresh done stays in live", loadStore().todos.some((t) => t.id === fresh.id));
+  ok("rich: old done + cancelled in archive", loadArchive().todos.length === 2);
+  delete process.env.TODO_DIR;
+  rmSync(dir, { recursive: true, force: true });
+}
+
+// --- listDoneUnified: live done + archived done, excludes cancelled, sorted newest-closed first ---
+{
+  const dir = mkdtempSync(join(tmpdir(), "armory-done-unified-"));
+  process.env.TODO_DIR = dir;
+  const { listDoneUnified, saveArchive } = await import("../src/archive.ts");
+  const { addTodo, completeTodo, deleteTodo, loadStore, saveStore } = await import("../src/todo-store.ts");
+  const liveRecent = addTodo({ title: "live recent done", notes: "lr" }); completeTodo(liveRecent.id);
+  const liveOld = addTodo({ title: "live older done", notes: "lo" }); completeTodo(liveOld.id);
+  const st = loadStore();
+  const t = st.todos.find((x) => x.id === liveOld.id)!;
+  const tenAgo = new Date(Date.now() - 10 * 86400_000).toISOString();
+  t.closedAt = tenAgo; t.updatedAt = tenAgo;
+  saveStore(st);
+  const archDone: any = { id: "td-arch-d", title: "archived done old", notes: "", project: "pi", tags: [], priority: "med", status: "done", source: "", createdAt: "x", updatedAt: "x", closedAt: new Date(Date.now() - 40 * 86400_000).toISOString() };
+  const archCancelled: any = { id: "td-arch-c", title: "archived cancelled", notes: "", project: "", tags: [], priority: "med", status: "cancelled", source: "", createdAt: "x", updatedAt: "x", closedAt: new Date(Date.now() - 40 * 86400_000).toISOString() };
+  saveArchive({ version: 3, updatedAt: "x", todos: [archDone, archCancelled] });
+  const liveCancelled = addTodo({ title: "live cancelled", notes: "" }); deleteTodo(liveCancelled.id);
+
+  const all = listDoneUnified({});
+  ok("unified: 3 done (live recent + live older + archived done)", all.length === 3);
+  ok("unified: excludes cancelled (live + archived)", !all.some((d) => d.status === "cancelled"));
+  ok("unified: live done tagged location live", all.filter((d) => d.location === "live").length === 2);
+  ok("unified: archived done tagged location archive", all.filter((d) => d.location === "archive").length === 1);
+  eq("unified: sorted newest-closed first", all[0]!.id, liveRecent.id);
+  eq("unified: oldest last", all[2]!.id, "td-arch-d");
+  const byNotes = listDoneUnified({ text: "lr" });
+  ok("unified: text filter matches notes", byNotes.length === 1 && byNotes[0]!.id === liveRecent.id);
+  const byProj = listDoneUnified({ project: "pi" });
+  ok("unified: project filter", byProj.every((d) => d.project === "pi"));
+  delete process.env.TODO_DIR;
+  rmSync(dir, { recursive: true, force: true });
+}
+
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

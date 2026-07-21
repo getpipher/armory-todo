@@ -1,6 +1,6 @@
 {
   "name": "@getpipher/armory-todo",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Global, cross-session TODO for pi — persists across all sessions and is auto-injected into every prompt. The disk-backed counterpart to branch-scoped pi todo extensions.",
   "keywords": [
     "pi-package",
@@ -35,7 +35,7 @@
     ]
   },
   "scripts": {
-    "test": "for t in todo-store todo-title-notes todo-archive todo-config todo-migrate todo-health todo-hard-prune panel-data; do node test/$t.test.mts || exit 1; done"
+    "test": "for t in todo-store todo-title-notes todo-archive todo-config todo-migrate todo-health todo-hard-prune todo-auto-prune panel-data; do node test/$t.test.mts || exit 1; done"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

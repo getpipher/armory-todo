@@ -21,13 +21,13 @@ import {
   type Theme,
 } from "@earendil-works/pi-tui";
 import { listTodos, parkTodo, completeTodo, deleteTodo, updateTodo, type Todo, type Status } from "./todo-store.ts";
-import { restoreTodo, archiveSummary, listArchived } from "./archive.ts";
+import { restoreTodo, archiveSummary, listArchived, listDoneUnified } from "./archive.ts";
 import { loadConfig, saveConfig, type TodoConfig } from "./config.ts";
 import { healthReport } from "./health.ts";
-import { todoToItem, archiveSummaryToItems, actionsForTodo, configToSettingItems } from "./panel-data.ts";
+import { todoToItem, archiveSummaryToItems, actionsForTodo, configToSettingItems, todoDoneItem, actionsForDoneTodo } from "./panel-data.ts";
 
-export type Box = "active" | "parked" | "archive" | "config";
-const BOXES: Box[] = ["active", "parked", "archive", "config"];
+export type Box = "active" | "parked" | "done" | "archive" | "config";
+const BOXES: Box[] = ["active", "parked", "done", "archive", "config"];
 
 export interface TodoPanelOpts {
   theme: Theme;
@@ -142,6 +142,9 @@ export class TodoPanel extends Container {
     } else if (this.currentBox === "parked") {
       const todos = listTodos({ status: "parked", text: filter || undefined, limit: 50 });
       this.setSelectItems(todos.map(todoToItem));
+    } else if (this.currentBox === "done") {
+      const items = listDoneUnified({ text: filter || undefined, limit: 50 });
+      this.setSelectItems(items.map(todoDoneItem));
     } else if (this.currentBox === "archive") {
       if (!filter) {
         const s = archiveSummary();
@@ -189,13 +192,20 @@ export class TodoPanel extends Container {
   }
 
   private openActionSubmenu(id: string): void {
-    const all = listTodos({ status: "all", limit: 200 });
-    const todo = all.find((t) => t.id === id);
-    if (!todo) {
-      this.onNotify("Todo not found in the live store (archive restore: use the archive box).", "info");
-      return;
+    let acts: { label: string; action: string }[];
+    if (this.currentBox === "done") {
+      const d = listDoneUnified({}).find((x) => x.id === id);
+      if (!d) { this.onNotify("Done todo not found.", "info"); return; }
+      acts = actionsForDoneTodo(d);
+    } else {
+      const all = listTodos({ status: "all", limit: 200 });
+      const todo = all.find((t) => t.id === id);
+      if (!todo) {
+        this.onNotify("Todo not found in the live store (archive restore: use the archive box).", "info");
+        return;
+      }
+      acts = [{ label: "View detail", action: "view" }, ...actionsForTodo(todo)];
     }
-    const acts = [{ label: "View detail", action: "view" }, ...actionsForTodo(todo)];
     const items: SelectItem[] = acts.map((a) => ({ value: a.action, label: a.label }));
     this.actionList = new SelectList(items, 8, {
       selectedPrefix: (s) => this.theme.fg("accent", s),

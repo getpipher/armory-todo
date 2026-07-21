@@ -55,6 +55,13 @@ TODOs live in one of three states, only one of which hits the agent context:
 todos from the live file to `todo-archive.json` — nothing is deleted. `prune --all`
 ignores age. `restore <id>` brings an archived todo back as `open`.
 
+**Auto-prune (v0.3.1):** on every `session_start`, done/cancelled todos older
+than `config.prune.defaultAgeDays` (default 7d) archive *themselves* — no need
+to run `prune` manually. Fresh done (<7d) stays in live. The startup notify
+reports what moved (`auto-pruned N stale done (>7d): …` + a `restore` hint);
+it's a transient message, not a prompt injection. Reversible via `restore <id>`.
+`prune --all` (move fresh done too) and `prune --hard` (irreversible) stay manual.
+
 The only irreversible action is `prune --hard` (hard-prune) — it requires an
 explicit `confirm: true` and is always user-confirmed. See **Self-awareness**
 below.
@@ -100,10 +107,11 @@ The single `text` field is split into **`title`** (≤120 chars, one-line summar
 
 Run `/todo` (no arg) in a TUI session to open the interactive triage panel:
 
-- **Box tabs** (Tab / Shift+Tab): Active · Parked · Archive · Config
+- **Box tabs** (Tab / Shift+Tab): Active · Parked · **Done** · Archive · Config
 - **Filter input**: type to search by text (live filter)
 - **SelectList**: arrow keys navigate, Enter selects
 - **Action submenu** (on Enter): View detail / Complete / Park / Re-activate / Restore / Edit title / Delete
+- **Done tab** (v0.3.1): all finished work (`status: done`) unified across live + archive, location-tagged (`[live Nd]` / `[archived YYYY-MM-DD]`), filterable; Enter → View detail, or Restore-from-archive. Excludes `cancelled` (that's in the Archive tab).
 - **Detail view** (View detail, or Enter on a row): renders the title + full `notes` read-only, with a footer hint on editing notes via the `todo` tool
 - **Archive box**: summary-first (counts by project + month) → Enter on a bucket to drill down
 - **Config box**: SettingsList with prune ages + health thresholds — edit live, persists to `todo.config.json`
@@ -126,6 +134,7 @@ Typed subcommands (`/todo park <id>`, `/todo prune`, etc.) all still work alongs
 /todo                    list open + in-progress TODOs
 /todo all                include parked/done/cancelled
 /todo add <title>        quick add (priority: med; notes via the todo tool)
+/todo finished            list all done todos (live + archived, recent first)
 /todo done <id>          mark done
 /todo rm <id>            cancel (tombstone)
 /todo park <id>          defer (parked — not injected, recoverable)
@@ -176,7 +185,7 @@ Full design + decisions:
 |---|---|---|
 | `TODO_DIR` | `~/.pi/agent/todo/` | override the store folder (tests / multiple profiles) |
 
-Run the store tests: `npm test` (220/220 across 8 suites).
+Run the store tests: `npm test` (255/255 across 9 suites).
 
 ## Known issues
 

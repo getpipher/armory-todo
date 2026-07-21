@@ -59,5 +59,26 @@ ok("settings has defaultAgeDays", settings.some((s) => s.id === "defaultAgeDays"
 ok("settings has activeMaxOpen", settings.some((s) => s.id === "activeMaxOpen"));
 ok("settings has archiveOldDays", settings.some((s) => s.id === "archiveOldDays"));
 
+
+
+// --- todoDoneItem: location-tagged label + actionsForDoneTodo ---
+const { todoDoneItem, actionsForDoneTodo } = await import("../src/panel-data.ts");
+import type { DoneItem } from "../src/archive.ts";
+
+const liveDone: DoneItem = { id: "td-d1", title: "finished today", notes: "", project: "pi", tags: [], priority: "med", status: "done", source: "", createdAt: "x", updatedAt: "x", closedAt: new Date().toISOString(), location: "live", archivedAt: null };
+const archDone: DoneItem = { id: "td-d2", title: "old finished", notes: "", project: "", tags: [], priority: "low", status: "done", source: "", createdAt: "x", updatedAt: "x", closedAt: "2026-07-10T00:00:00Z", location: "archive", archivedAt: "2026-07-10T00:00:00Z" };
+
+const li = todoDoneItem(liveDone);
+ok("doneItem: label has title", li.label.includes("finished today"));
+ok("doneItem: live tagged [live Nd]", /\[live \d+d\]/.test(li.label));
+
+const ai = todoDoneItem(archDone);
+ok("doneItem: archive tagged [archived YYYY-MM-DD]", ai.label.includes("[archived 2026-07-10]"));
+
+ok("done actions: View detail (live)", actionsForDoneTodo(liveDone).some((a) => a.action === "view"));
+ok("done actions: no Restore for live", !actionsForDoneTodo(liveDone).some((a) => a.action === "restore"));
+ok("done actions: Restore for archived", actionsForDoneTodo(archDone).some((a) => a.action === "restore"));
+ok("done actions: no Delete for done", !actionsForDoneTodo(liveDone).some((a) => a.action === "delete"));
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
