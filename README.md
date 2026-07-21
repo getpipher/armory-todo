@@ -111,7 +111,19 @@ A project registry (`~/.pi/agent/todo/projects.json`, lazy-synced on read) track
 
 The interactive `/todo` panel gains a 6th tab — **Projects** — listing the overview rows + a `(no project)` summary, with an action submenu per project: **Rename / merge** (inline input), **Set maxOpen** (number or `clear`), **Filter active to project** (jump to the Active tab scoped). A thin `/todo projects` slash mirrors the overview as text.
 
-**Advisory only in v0.4.0** — `maxOpen` drives a `health` flag, it does **not** block `add` (enforcement graduates in v0.5.0, alongside count + notes caps + over-cap injection truncation).
+**Advisory in v0.4.0 → enforced in v0.5.0** — `maxOpen` now blocks `add` (and project-move) when a project is at its cap. See the [Caps enforcement (v0.5.0)](#caps-enforcement-v050) section below.
+
+## Caps enforcement (v0.5.0)
+
+Three caps keep the store (and its auto-injected prompt block) from bloating silently — the forcing-function half of [issue #1](https://github.com/getpither/armory-todo/issues/1):
+
+1. **Count cap (per-project `maxOpen`, enforced).** A project's `maxOpen` slot (set via the Projects tab → Set maxOpen, or `setProjectMaxOpen`) **blocks `add`** when the project is at its cap, and **blocks a project-move** of an `open`/`in_progress` todo into a capped project. The cap is on the `open` count (matches the `PROJECT_OVER` health flag); `in_progress` doesn't count. Un-park (`parked→open`) is intentionally **not** blocked — reactivating deferred work isn't adding new work. The block message tells you how to raise/clear the cap. `maxOpen: null` (default) = uncapped.
+
+2. **Notes cap (`health.maxNotesBytes`, default 8192 bytes, enforced).** Oversize notes are rejected at `add`/`update` (only when `notes` is being written — a title edit on a grandfathered oversize note isn't trapped). Byte-length, not char-length (notes can hold Unicode). Existing oversize notes are grandfathered; `health` surfaces the worst offender via the `NOTES_OVER` flag + an actionable `todo update <id> notes:…` suggestion.
+
+3. **Over-cap injection truncation.** When actionable > `health.activeMaxOpen` (default 15), the auto-injected `## Open TODOs (N)` block collapses to a ~4-line summary (total + project span + over-budget projects + a `todo list` pointer) instead of the row list. Under the cap → the familiar row list. `activeMaxOpen` itself stays **advisory** (it drives the `ACTIVE_LARGE` flag and the truncation trigger; it is not a hard global block).
+
+**Backwards-compat:** zero migration (store v3, config v1, registry v1 unchanged in shape). Oversize notes grandfathered. The `maxOpen` advisory→enforced graduation is a documented behavior change for any v0.4.0 user who set a slot (the block message tells them how to raise/clear).
 
 ## Interactive panel (SPEC-3)
 
@@ -182,7 +194,7 @@ Each TODO carries `id, title (≤120 chars), notes (any length), project, tags, 
 - **Disk store** — `~/.pi/agent/todo/` folder: `todo.json` (live: active + parked), `todo-archive.json` (sealed: done + cancelled), `todo.config.json` (prune ages + health thresholds), `projects.json` (project registry: canonical names + advisory `maxOpen` slots, v0.4.0). Atomic `0600` writes, corrupt-file auto-recovery, `version: 3` store schema (`title` ≤120 chars + `notes` any length; v2 `text`-only stores migrate to v3 on first load). Not pi session entries, so it outlives any conversation.
 - **`todo` tool** — model CRUD + lifecycle (above).
 - **`/todo` command** — human triage (above).
-- **Auto-inject** — on every `before_agent_start`, a compact `## Open TODOs (N)` block (titles + ids, capped at 15, sorted by priority) is appended to the system prompt, so the agent starts every turn already aware of pending work. Only `open` + `in_progress` are injected — `parked` and archived todos are excluded (the lifecycle-box boundary). Mutations refresh it on the next turn.
+- **Auto-inject** — on every `before_agent_start`, a compact `## Open TODOs (N)` block (titles + ids, sorted by priority) is appended to the system prompt, so the agent starts every turn already aware of pending work. The block is **cap-aware** (v0.5.0): under `health.activeMaxOpen` (default 15) it lists the rows; **over** the cap it collapses to a lean summary (counts + over-budget projects + a `todo list` pointer) so the prompt stays bounded when the store bloats. Only `open` + `in_progress` are injected — `parked` and archived todos are excluded (the lifecycle-box boundary). Mutations refresh it on the next turn.
 - **Archive query** — `list` with `archived:true` is summary-first (counts by project + month) then filtered/paginated on demand, so a large archive never bloats a single query.
 
 Full design + decisions:
@@ -203,7 +215,7 @@ Run the store tests: `npm test` (315/315 across 11 suites).
 ## Known issues
 
 - **No in-panel multi-line `notes` editing.** The panel's inline Edit is single-line (`Input`) for `title` only; `ctx.ui.editor()` from inside `ctx.ui.custom()` triggers a nested-UI bug (`/todo` won't reopen). `notes` is model-managed via the `todo` tool (`action: update, id, notes`). When a safe `ctx.ui.editor()`-from-`custom()` pattern lands in pi-tui, in-panel notes editing is a clean follow-up.
-- **No caps enforcement yet (count / notes / injection).** v0.4.0's `maxOpen` slot is advisory only (drives a `health` flag); block-on-add for count + notes caps + over-cap injection truncation land in v0.5.0. Until then, `health` reports counts + notes-bytes as read-only diagnostics.
+- **Caps enforcement shipped in v0.5.0.** Per-project `maxOpen` blocks `add`/move; `health.maxNotesBytes` (default 8KB) rejects oversize notes at write; the auto-injected block collapses to a lean summary over `activeMaxOpen`. See [Caps enforcement (v0.5.0)](#caps-enforcement-v050) above.
 
 ## Security
 

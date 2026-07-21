@@ -55,6 +55,43 @@ const recovered = loadConfig();
 eq("corrupt config → defaults", recovered.prune.defaultAgeDays, 7);
 ok("corrupt config backed up or recovered", recovered.prune.defaultAgeDays === 7);
 
+// --- v0.5.0: maxNotesBytes ---
+eq("default maxNotesBytes 8192", DEFAULT_CONFIG.health.maxNotesBytes, 8192);
+eq("loadConfig maxNotesBytes default", loadConfig().health.maxNotesBytes, 8192);
+
+// forward-merge: an old config (no maxNotesBytes) gets the default
+writeFileSync(join(tmp, "todo.config.json"), JSON.stringify({
+  version: 1,
+  prune: { defaultAgeDays: 7, hardAgeDays: 180, statuses: ["done", "cancelled"] },
+  health: { activeMaxOpen: 15, activeStaleDays: 30, parkedMax: 10, parkedStaleDays: 60, archiveMax: 200, archiveOldDays: 180, perProjectDefaultMax: 8 },
+}, null, 2));
+const mergedOld = loadConfig();
+eq("old config (no maxNotesBytes) -> default 8192", mergedOld.health.maxNotesBytes, 8192);
+
+// explicit value respected
+saveConfig({ ...mergedOld, health: { ...mergedOld.health, maxNotesBytes: 4096 } });
+eq("explicit maxNotesBytes 4096 respected", loadConfig().health.maxNotesBytes, 4096);
+
+// 0 respected (strict no-notes)
+saveConfig({ ...mergedOld, health: { ...mergedOld.health, maxNotesBytes: 0 } });
+eq("maxNotesBytes 0 respected", loadConfig().health.maxNotesBytes, 0);
+
+// negative -> default
+writeFileSync(join(tmp, "todo.config.json"), JSON.stringify({
+  version: 1,
+  prune: { defaultAgeDays: 7, hardAgeDays: 180, statuses: ["done", "cancelled"] },
+  health: { activeMaxOpen: 15, activeStaleDays: 30, parkedMax: 10, parkedStaleDays: 60, archiveMax: 200, archiveOldDays: 180, perProjectDefaultMax: 8, maxNotesBytes: -5 },
+}, null, 2));
+eq("negative maxNotesBytes -> default 8192", loadConfig().health.maxNotesBytes, 8192);
+
+// non-number (string) -> default
+writeFileSync(join(tmp, "todo.config.json"), JSON.stringify({
+  version: 1,
+  prune: { defaultAgeDays: 7, hardAgeDays: 180, statuses: ["done", "cancelled"] },
+  health: { activeMaxOpen: 15, activeStaleDays: 30, parkedMax: 10, parkedStaleDays: 60, archiveMax: 200, archiveOldDays: 180, perProjectDefaultMax: 8, maxNotesBytes: "big" },
+}, null, 2));
+eq("non-number maxNotesBytes -> default 8192", loadConfig().health.maxNotesBytes, 8192);
+
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

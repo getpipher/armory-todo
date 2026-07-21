@@ -109,5 +109,14 @@ const np = noProjectSummaryItem(overview);
 ok("no-project summary value is __noproject__", np.value === "__noproject__");
 ok("no-project summary label has count", np.label.includes("2"));
 
+// v0.5.0: maxNotesBytes config row
+const { DEFAULT_CONFIG: DCFG } = await import("../src/config.ts");
+const items = configToSettingItems(DCFG);
+const row = items.find((i) => i.id === "maxNotesBytes");
+ok("maxNotesBytes row present", row !== undefined);
+ok("maxNotesBytes row label", row?.label === "Notes max bytes");
+eq("maxNotesBytes row current value", row?.currentValue, "8192");
+ok("maxNotesBytes row has value options", Array.isArray(row?.values) && row!.values.length > 0);
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

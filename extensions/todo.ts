@@ -133,7 +133,7 @@ export default function (pi: ExtensionAPI) {
       "Never put secrets in a TODO — the text reaches the model provider.",
     promptSnippet: "Read/update the global cross-session TODO list (active / parked / archive) + bloat health",
     promptGuidelines: [
-      "Use todo (action:'add', title, notes?, project?, tags?, priority?, source?) when the user says 'put this in our TODO'. title max 120 chars (one-line summary); put long detail in notes.",
+      "Use todo (action:'add', title, notes?, project?, tags?, priority?, source?) when the user says 'put this in our TODO'. title max 120 chars (one-line summary); put long detail in notes (capped at health.maxNotesBytes, default 8KB — oversize is rejected at write). Adds are BLOCKED if the target project is at its per-project maxOpen cap (the slot you set via the Projects tab); close/park one or raise maxOpen first.",
       "Use todo (action:'get', id) to read a todo's full notes before acting on it (the bullet marker in lists means notes exist).",
       "Use todo (action:'update', id, title?, notes?, project?, tags?, priority?, status?) to edit; notes empty string clears.",
       "Use todo (action:'list') when the user asks 'show me the TODO' / 'what's pending' (text filter searches title+notes).",
@@ -146,7 +146,7 @@ export default function (pi: ExtensionAPI) {
       "Use todo (action:'health') to check bloat across all boxes (counts + flags + suggestions). Run when the user asks about hygiene/bloat or before any hard-prune.",
       "Use todo (action:'prune', hard:true, confirm:true, box?, olderThan?) for PERMANENT deletion (the only irreversible action). ALWAYS run health first, show the user the report + the exact proposed command, and wait for an explicit yes before passing confirm:true. Never hard-prune without explicit user confirmation.",
       "Use todo (action:'projects') for a per-project scope overview (open/in_progress/parked/done counts + maxOpen + OVER/?typo markers). Run when the user asks 'which projects have open work' or to see backlog shape by project.",
-      "Use todo (action:'project_rename', oldName, newName) to rename or merge a project (rewrites live + archive + registry). Use it to fix typo'd project strings (e.g. getpither → getpipher). Rename onto an existing name merges (consolidates the old project into the new). Advisory maxOpen caps are NOT enforced in v0.4.0 — they only drive a health flag; enforcement lands in v0.5.0.",
+      "Use todo (action:'project_rename', oldName, newName) to rename or merge a project (rewrites live + archive + registry). Use it to fix typo'd project strings (e.g. getpither → getpipher). Rename onto an existing name merges (consolidates the old project into the new). Per-project maxOpen caps are ENFORCED (block-on-add); they also drive a PROJECT_OVER health flag when breached.",
     ],
     parameters: Type.Object({
       action: StringEnum(ACTIONS),

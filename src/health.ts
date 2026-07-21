@@ -28,6 +28,7 @@ export interface ArchiveHealth {
 export interface NotesBytes {
   total: number;
   max: number;
+  maxId: string | null;   // v0.5.0: id of the todo with the largest notes (null if no todos)
   avg: number;
 }
 
@@ -35,6 +36,7 @@ export type HealthFlag =
   | "ACTIVE_LARGE" | "ACTIVE_STALE"
   | "PARKED_LARGE" | "PARKED_STALE"
   | "ARCHIVE_LARGE" | "ARCHIVE_OLD"
+  | "NOTES_OVER"
   | "PROJECT_OVER" | "PROJECT_TYPO" | "PROJECT_LARGE" | "PROJECT_STALE";
 
 export interface ProjectHealth {
@@ -84,12 +86,21 @@ export function healthReport(): HealthReport {
   const archiveOld = archive.todos.filter((t) => t.closedAt && daysAgo(t.closedAt) > h.archiveOldDays).length;
 
   // notes bytes across active + parked (archived excluded — sealed history).
+  // v0.5.0: track the worst-offender id so the NOTES_OVER suggestion is actionable.
   const apTodos = [...openTodos, ...ipTodos, ...parkedTodos];
-  const notesSizes = apTodos.map((t) => Buffer.byteLength(t.notes, "utf8"));
+  let maxId: string | null = null;
+  let maxSize = 0;
+  let totalBytes = 0;
+  for (const t of apTodos) {
+    const s = Buffer.byteLength(t.notes, "utf8");
+    totalBytes += s;
+    if (s > maxSize) { maxSize = s; maxId = t.id; }
+  }
   const notesBytes: NotesBytes = {
-    total: notesSizes.reduce((a, b) => a + b, 0),
-    max: notesSizes.length ? Math.max(...notesSizes) : 0,
-    avg: notesSizes.length ? Math.round(notesSizes.reduce((a, b) => a + b, 0) / notesSizes.length) : 0,
+    total: totalBytes,
+    max: maxSize,
+    maxId: apTodos.length ? maxId : null,
+    avg: apTodos.length ? Math.round(totalBytes / apTodos.length) : 0,
   };
 
   const active: ActiveHealth = {
@@ -102,6 +113,7 @@ export function healthReport(): HealthReport {
 
   const flags: HealthFlag[] = [];
   if (actionable.length > h.activeMaxOpen) flags.push("ACTIVE_LARGE");
+  if (notesBytes.max > h.maxNotesBytes) flags.push("NOTES_OVER");
   if (activeStale > 0) flags.push("ACTIVE_STALE");
   if (parkedTodos.length > h.parkedMax) flags.push("PARKED_LARGE");
   if (parkedStale > 0) flags.push("PARKED_STALE");
@@ -113,6 +125,10 @@ export function healthReport(): HealthReport {
   if (activeStale > 0) suggestions.push(`active: ${activeStale} open TODOs untouched for ${h.activeStaleDays}d → park or close them`);
   if (parkedStale > 0) suggestions.push(`parked: ${parkedStale} parked > ${h.parkedStaleDays}d → restore or hard-prune`);
   if (actionable.length > h.activeMaxOpen) suggestions.push(`active: ${actionable.length} open+in_progress (max ${h.activeMaxOpen}) → close or park some before adding more`);
+  if (notesBytes.max > h.maxNotesBytes) {
+    const id = notesBytes.maxId ?? "<id>";
+    suggestions.push(`notes: largest note ${notesBytes.max}B > cap ${h.maxNotesBytes}B (on ${id}) → trim via todo update ${id} notes:…`);
+  }
 
   // per-project flags (v0.4.0)
   const archivedDone = archive.todos.filter((t) => t.status === "done");

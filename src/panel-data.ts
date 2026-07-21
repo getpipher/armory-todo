@@ -60,6 +60,7 @@ export function configToSettingItems(cfg: TodoConfig): SettingItem[] {
     { id: "parkedStaleDays", label: "Parked stale (days)", currentValue: String(cfg.health.parkedStaleDays), values: ["30", "60", "90"], description: "Bloat flag when parked longer than this." },
     { id: "archiveMax", label: "Archive max", currentValue: String(cfg.health.archiveMax), values: ["100", "200", "500"], description: "Bloat flag when archive exceeds this." },
     { id: "archiveOldDays", label: "Archive old (days)", currentValue: String(cfg.health.archiveOldDays), values: ["90", "180", "365"], description: "Bloat flag when archive items older than this." },
+    { id: "maxNotesBytes", label: "Notes max bytes", currentValue: String(cfg.health.maxNotesBytes), values: ["2048", "4096", "8192", "16384", "32768"], description: "Hard reject at add/update when notes exceeds this (bytes). 0 = no notes allowed." },
   ];
 }
 
