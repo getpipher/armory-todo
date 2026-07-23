@@ -142,6 +142,10 @@ eq("clean flags empty", clean.flags.length, 0);
 }
 
 // ===== v0.5.0: NOTES_OVER flag + maxId =====
+// RE-ISOLATE: an earlier sub-section did `delete process.env.TODO_DIR` (line ~140),
+// which would make saveStore/saveConfig below fall back to the DEFAULT real store.
+// Re-establish the temp TODO_DIR before any write (test-isolation bug td-mrx5lgqu7jmcrl).
+process.env.TODO_DIR = tmp;
 const { saveConfig } = await import("../src/config.ts");
 saveConfig({ version: 1, prune: { defaultAgeDays: 7, hardAgeDays: 180, statuses: ["done", "cancelled"] }, health: { activeMaxOpen: 15, activeStaleDays: 30, parkedMax: 10, parkedStaleDays: 60, archiveMax: 200, archiveOldDays: 180, perProjectDefaultMax: 8, maxNotesBytes: 100 } });
 saveStore({ version: 3, updatedAt: fresh, todos: [
