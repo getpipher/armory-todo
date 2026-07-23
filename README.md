@@ -105,7 +105,7 @@ irreversible escape hatch, always user-confirmed.
 
 ## Project-scope management (v0.4.0)
 
-A project registry (`~/.pi/agent/todo/projects.json`, lazy-synced on read) tracks known projects + an advisory per-project **`maxOpen`** cap slot. The `todo` tool gains two actions: **`projects`** (per-project scope overview — open/in_progress/parked/done counts + `maxOpen` + `OVER`/`?typo` markers + last-updated) and **`project_rename`** (rename or merge a project; rewrites live + archive + registry — the typo-cleanup path, e.g. `getpither` → `getpipher`).
+A project registry (`~/.pi/agent/todo/projects.json`, lazy-synced on read) tracks known projects + an advisory per-project **`maxOpen`** cap slot. The `todo` tool gains two actions: **`projects`** (per-project scope overview — open/in_progress/parked/done counts + `maxOpen` + `OVER`/`?typo` markers + last-updated) and **`project_rename`** (rename or merge a project; rewrites live + archive + registry — the typo-cleanup path, e.g. `foo-bat` → `foo-bar`).
 
 `health` gains four per-project flags: **`PROJECT_OVER`** (open > a project's `maxOpen` slot), **`PROJECT_LARGE`** (open > `health.perProjectDefaultMax`, default 8 — fires out-of-the-box, no per-project config needed), **`PROJECT_STALE`** (project untouched > `activeStaleDays`), **`PROJECT_TYPO`** (1-todo project with a near-named sibling, Levenshtein ≤ 2). The `/todo health` report + the `todo` `health` action both show a `projects:` section.
 
@@ -115,7 +115,7 @@ The interactive `/todo` panel gains a 6th tab — **Projects** — listing the o
 
 ## Caps enforcement (v0.5.0)
 
-Three caps keep the store (and its auto-injected prompt block) from bloating silently — the forcing-function half of [issue #1](https://github.com/getpither/armory-todo/issues/1):
+Three caps keep the store (and its auto-injected prompt block) from bloating silently — the forcing-function half of [issue #1](https://github.com/getpipher/armory-todo/issues/1):
 
 1. **Count cap (per-project `maxOpen`, enforced).** A project's `maxOpen` slot (set via the Projects tab → Set maxOpen, or `setProjectMaxOpen`) **blocks `add`** when the project is at its cap, and **blocks a project-move** of an `open`/`in_progress` todo into a capped project. The cap is on the `open` count (matches the `PROJECT_OVER` health flag); `in_progress` doesn't count. Un-park (`parked→open`) is intentionally **not** blocked — reactivating deferred work isn't adding new work. The block message tells you how to raise/clear the cap. `maxOpen: null` (default) = uncapped.
 

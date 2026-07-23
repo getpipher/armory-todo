@@ -157,7 +157,7 @@ export default function (pi: ExtensionAPI) {
       "Use todo (action:'health') to check bloat across all boxes (counts + flags + suggestions). Run when the user asks about hygiene/bloat or before any hard-prune.",
       "Use todo (action:'prune', hard:true, confirm:true, box?, olderThan?) for PERMANENT deletion (the only irreversible action). ALWAYS run health first, show the user the report + the exact proposed command, and wait for an explicit yes before passing confirm:true. Never hard-prune without explicit user confirmation.",
       "Use todo (action:'projects') for a per-project scope overview (open/in_progress/parked/done counts + maxOpen + OVER/?typo markers). Run when the user asks 'which projects have open work' or to see backlog shape by project.",
-      "Use todo (action:'project_rename', oldName, newName) to rename or merge a project (rewrites live + archive + registry). Use it to fix typo'd project strings (e.g. getpither → getpipher). Rename onto an existing name merges (consolidates the old project into the new). Per-project maxOpen caps are ENFORCED (block-on-add); they also drive a PROJECT_OVER health flag when breached.",
+      "Use todo (action:'project_rename', oldName, newName) to rename or merge a project (rewrites live + archive + registry). Use it to fix typo'd project strings (e.g. foo-bat → foo-bar). Rename onto an existing name merges (consolidates the old project into the new). Per-project maxOpen caps are ENFORCED (block-on-add); they also drive a PROJECT_OVER health flag when breached.",
     ],
     parameters: Type.Object({
       action: StringEnum(ACTIONS),

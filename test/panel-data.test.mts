@@ -87,7 +87,7 @@ import type { ProjectsOverview } from "../src/projects.ts";
 const overview: ProjectsOverview = {
   rows: [
     { name: "pi", open: 3, in_progress: 0, parked: 0, done: 1, total: 4, maxOpen: 2, over: true, typo: false, lastUpdated: "2026-07-21T00:00:00.000Z" },
-    { name: "getpither", open: 0, in_progress: 0, parked: 0, done: 0, total: 1, maxOpen: null, over: false, typo: true, lastUpdated: "" },
+    { name: "foo-bat", open: 0, in_progress: 0, parked: 0, done: 0, total: 1, maxOpen: null, over: false, typo: true, lastUpdated: "" },
   ],
   totalTodos: 5,
   noProject: { count: 2, open: 1 },

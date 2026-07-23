@@ -72,4 +72,4 @@ node test/todo-backup.test.mts     # v0.5.1 write-audit + rolling .bak + drop-sn
 - Write-audit + backup (v0.5.1): every `saveStore`/`saveArchive` backs up to `<path>.bak` (rolling) + snapshots pre-write state to `<path>.bak-drop-<ts>` on a count drop + appends a counts-only line to `todo-audit.log`. Post the v0.2.0 migration data-loss incident (47-todo store destroyed, no backup). Recovery: restore from the newest `todo.json.bak-drop-<ts>`.
 - Never put secrets in a TODO — the text reaches the model provider.
 - Known deferred issue: no in-panel multi-line `notes` editing (pi-tui nested-UI blocker); `notes` is model-managed via the `todo` tool.
-- Issue #1 fully shipped (v0.4.0 Feature A + v0.5.0 Feature B). Open data fix: RECTOR's `getpither` typo (1 done) — `todo project_rename getpither getpipher` to clean (RECTOR's call).
+- Issue #1 fully shipped (v0.4.0 Feature A + v0.5.0 Feature B). Open data fix: RECTOR's `foo-bat` typo (1 done) — `todo project_rename foo-bat foo-bar` to clean (RECTOR's call).

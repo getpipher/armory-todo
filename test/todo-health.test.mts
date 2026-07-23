@@ -123,8 +123,8 @@ eq("clean flags empty", clean.flags.length, 0);
   for (let i = 0; i < 9; i++) addTodo({ title: `large-${i}`, project: "large-proj" });
 
   // PROJECT_TYPO: 1 todo + near sibling
-  addTodo({ title: "typo", project: "getpither" });
-  addTodo({ title: "sib", project: "getpipher" });
+  addTodo({ title: "typo", project: "foo-bat" });
+  addTodo({ title: "sib", project: "foo-bar" });
 
   const r = hr4();
   ok("PROJECT_OVER flag", r.flags.includes("PROJECT_OVER"));
@@ -135,7 +135,7 @@ eq("clean flags empty", clean.flags.length, 0);
   ok("suggestion mentions rename for typo", r.suggestions.some((s) => s.includes("rename")));
   ok("over-proj in projects[] (over)", r.projects.some((p) => p.name === "over-proj" && p.over));
   ok("large-proj in projects[] (large)", r.projects.some((p) => p.name === "large-proj" && p.large));
-  ok("getpither in projects[] (typo)", r.projects.some((p) => p.name === "getpither" && p.typo));
+  ok("foo-bat in projects[] (typo)", r.projects.some((p) => p.name === "foo-bat" && p.typo));
 
   delete process.env.TODO_DIR;
   rmSync(dir, { recursive: true, force: true });

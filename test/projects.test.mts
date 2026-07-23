@@ -64,13 +64,13 @@ eq("sip maxOpen 0", sip3.maxOpen, 0);
 ok("sip over (1 > 0)", sip3.over);
 
 // --- typo: 1-todo project with near-sibling; 2-todo project is not typo ---
-addTodo({ title: "z", project: "getpither" });   // 1 todo
-addTodo({ title: "y", project: "getpipher" });    // 1 todo, near getpither (symmetric)
+addTodo({ title: "z", project: "foo-bat" });   // 1 todo
+addTodo({ title: "y", project: "foo-bar" });    // 1 todo, near foo-bat (symmetric)
 addTodo({ title: "s1", project: "solo-proj" });
 addTodo({ title: "s2", project: "solo-proj" });    // 2 todos → not typo
 const o4 = projectsOverview();
-ok("getpither typo (near getpipher)", o4.rows.find((r) => r.name === "getpither")!.typo);
-ok("getpither typo (near getpither, symmetric)", o4.rows.find((r) => r.name === "getpipher")!.typo);
+ok("foo-bat typo (near foo-bar)", o4.rows.find((r) => r.name === "foo-bat")!.typo);
+ok("foo-bat typo (near foo-bat, symmetric)", o4.rows.find((r) => r.name === "foo-bar")!.typo);
 ok("solo-proj not typo (2 todos)", !o4.rows.find((r) => r.name === "solo-proj")!.typo);
 
 // --- lastUpdated = max live updatedAt, "" if no live todos ---
@@ -78,7 +78,7 @@ const o5 = projectsOverview();
 ok("pi lastUpdated non-empty", o5.rows.find((r) => r.name === "pi")!.lastUpdated.length > 0);
 
 // --- registry seeded via reconcile (projectsOverview persists) ---
-ok("registry has getpither", loadRegistry().projects.some((p) => p.name === "getpither"));
+ok("registry has foo-bat", loadRegistry().projects.some((p) => p.name === "foo-bat"));
 ok("registry has solo-proj", loadRegistry().projects.some((p) => p.name === "solo-proj"));
 
 rmSync(tmp, { recursive: true, force: true });
