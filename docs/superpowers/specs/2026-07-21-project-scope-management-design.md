@@ -18,7 +18,7 @@ The injected `## Open TODOs (N)` block is already bounded (v0.3.0 title-only inj
 1. **No forcing function on the *count*.** Open can grow to 30/50/100 with no pushback; the injection *hides* the rot behind `+N more`. A cap is a triage signal, not a bytes fix.
 2. **No scope overview.** `project` is free-text, un-aggregated. Working across ZeroClaw, getpipher, vision, etc., you can't see "this project owns 18 of my 22 open" — can't triage *where* to cut. The bigger daily pain than the cap.
 3. **No per-project bloat signal in `health`.** `ACTIVE_LARGE` fires globally at >15; can't say *which* project is over budget.
-4. **No curation surface.** A typo'd project string (`getpither` vs `getpipher`) silently becomes its own "project" with no way to merge.
+4. **No curation surface.** A typo'd project string (`foo-bat` vs `foo-bar`) silently becomes its own "project" with no way to merge.
 
 v0.4.0 is the **triage visibility** release: see the backlog by project + know when one's over budget + fix typos. **No enforcement** — that's v0.5.0's "caps release" (count + notes + injection, all block-on-add).
 
@@ -39,8 +39,8 @@ v0.4.0 is the **triage visibility** release: see the backlog by project + know w
 | **`projects` output** (Q9) | B — counts + cap signal + typo marker | One-stop triage; staleness/notesBytes stay in `health` (whole-store concerns). |
 | **`health` per-project flags** (Q10) | C — `PROJECT_OVER` + `PROJECT_TYPO` + `PROJECT_LARGE` + `PROJECT_STALE` | `PROJECT_LARGE` (global default threshold) makes the per-project signal useful on day 1, not gated behind per-project config. All advisory. |
 | **Action API + slash naming** (Q11) | A — tool `action:'projects'` + `action:'project_rename'`; slash `/todo projects` (thin mirror) | Plural=list, singular=action namespace. No `/todo project rename` slash — rename is panel-only (Q12). |
-| **Panel surface** (Q12) | A — 6th tab `projects` + per-project action submenu | Panel is the primary human surface (getpither UX mental model: interactive first, CLI-style for the agent). |
-| **UX mental model** | Documented in `~/local-dev/getpipher/AGENTS.md` (cross-cutting, all getpither extensions) | Panel-first design order; tool action + slash are secondary/derived. |
+| **Panel surface** (Q12) | A — 6th tab `projects` + per-project action submenu | Panel is the primary human surface (getpipher UX mental model: interactive first, CLI-style for the agent). |
+| **UX mental model** | Documented in `~/local-dev/getpipher/AGENTS.md` (cross-cutting, all getpipher extensions) | Panel-first design order; tool action + slash are secondary/derived. |
 
 **Defaults (Q13):** `health.perProjectDefaultMax = 8`; `maxOpen` per-project default `null`; `PROJECT_STALE` reuses `activeStaleDays` (30d); `PROJECT_TYPO` = exactly 1 todo in project (live + archived done); seed scope = live + archive; empty-project group = `(no project)` (excluded from typo detection, no `maxOpen`); rename is best-effort multi-file (live → archive → registry, backup-on-corrupt per file, no cross-file WAL).
 
@@ -58,7 +58,7 @@ v0.4.0 is the **triage visibility** release: see the backlog by project + know w
   "updatedAt": "2026-07-21T12:00:00.000Z",
   "projects": [
     {
-      "name": "getpipher",
+      "name": "foo-bar",
       "maxOpen": 5,
       "createdAt": "2026-07-21T12:00:00.000Z",
       "updatedAt": "2026-07-21T12:00:00.000Z"
@@ -158,7 +158,7 @@ Flag logic per project (live open count is the `open` figure):
 - `PROJECT_TYPO` — total todos (live + archived done) in the project === 1 AND a near-named sibling (Levenshtein ≤ 2) exists in the registry
 
 `healthReport()` calls `reconcileRegistry` first (so the registry is current), persists iff changed, then computes. Suggestions gain per-project actionable lines, e.g.:
-- `project 'getpither' has 1 todo — possible typo of 'getpipher'? → todo project rename getpither getpipher`
+- `project 'foo-bat' has 1 todo — possible typo of 'foo-bar'? → todo project rename foo-bat foo-bar`
 - `project 'getpipher' 12 open (maxOpen 5) → close/park some, or raise maxOpen`
 - `project 'bug-bounty' 9 open (per-project default max 8) → over budget`
 - `project 'vision' untouched 45d → stale, park or close`
@@ -171,7 +171,7 @@ Flag logic per project (live open count is the `open` figure):
 
 #### Tool actions (agent surface)
 - `action: 'projects'` → returns `ProjectsOverview` (structured). No params.
-- `action: 'project_rename'` → params `oldName: string`, `newName: string`. Returns `{ liveRenamed: number, archivedRenamed: number, merged: boolean, newName: string }`. Throws `TodoError` if `oldName` not in registry. `newName` may equal an existing different project — rename-onto-existing is a **merge** (consolidates `oldName` todos into `newName`, removes the `oldName` registry entry, keeps `newName`'s entry; `merged: true`). This is the typo-cleanup path (`getpither` → `getpipher` where `getpipher` already exists). Self-rename (`newName === oldName`) is a no-op success (`{ liveRenamed: 0, archivedRenamed: 0, merged: false, newName }`).
+- `action: 'project_rename'` → params `oldName: string`, `newName: string`. Returns `{ liveRenamed: number, archivedRenamed: number, merged: boolean, newName: string }`. Throws `TodoError` if `oldName` not in registry. `newName` may equal an existing different project — rename-onto-existing is a **merge** (consolidates `oldName` todos into `newName`, removes the `oldName` registry entry, keeps `newName`'s entry; `merged: true`). This is the typo-cleanup path (`foo-bat` → `foo-bar` where `getpipher` already exists). Self-rename (`newName === oldName`) is a no-op success (`{ liveRenamed: 0, archivedRenamed: 0, merged: false, newName }`).
 
 #### Panel (human surface — primary)
 New 6th tab `projects` in the `/todo` panel (existing 5: active/parked/done/archive/config → now 6). Tab label `Projects`.
@@ -179,13 +179,13 @@ New 6th tab `projects` in the `/todo` panel (existing 5: active/parked/done/arch
 - **Rows:** `ProjectOverviewRow` rendered as: `name  open/in_progress/parked/done (total)  [max:N or —]  OVER?  ?typo  · lastUpdated`. Box-draw to match existing tab style.
 - **Sort:** open desc → total desc → name asc (Q9).
 - **Action submenu** (per project, via `openActionSubmenu`): `Rename` / `Set maxOpen` / `Filter active to project`.
-  - **Rename** — inline `Input` (single-line; pi-tui can't nest `ctx.ui.editor()` inside `ctx.ui.custom()`). Validates `newName` non-empty + not equal to current. Calls `renameProject`. Confirms merge if target exists. Notify on success (`Renamed getpither → getpipher (3 live + 1 archived)`).
+  - **Rename** — inline `Input` (single-line; pi-tui can't nest `ctx.ui.editor()` inside `ctx.ui.custom()`). Validates `newName` non-empty + not equal to current. Calls `renameProject`. Confirms merge if target exists. Notify on success (`Renamed foo-bat → foo-bar (3 live + 1 archived)`).
   - **Set maxOpen** — inline `Input`, accepts a positive integer or `clear` (→ `null`). Calls `setProjectMaxOpen`. Notify (`getpipher maxOpen = 5` or `getpipher maxOpen cleared`).
   - **Filter active to project** — jumps to the `active` tab with a `project` filter applied (existing list filter already supports `project`).
 - **`(no project)` bucket** — shown as a non-selectable summary row at the top or footer (`(no project): N open`), no submenu.
 
 #### Slash (thin mirror only)
-- `/todo projects` — prints the `ProjectsOverview` as text (mirrors `/todo health`'s text-report style). One new sub. **No** `/todo project rename` slash — rename is panel-only (Q12=A + getpither UX mental model).
+- `/todo projects` — prints the `ProjectsOverview` as text (mirrors `/todo health`'s text-report style). One new sub. **No** `/todo project rename` slash — rename is panel-only (Q12=A + getpipher UX mental model).
 
 ### 3.7 `src/config.ts` — one new field, no schema bump
 

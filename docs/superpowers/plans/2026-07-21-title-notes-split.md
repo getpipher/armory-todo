@@ -702,7 +702,7 @@ const { migrateV2ToV3 } = await import("../src/migrate.ts");
 }
 ```
 
-Note: in Case 4, the curated armory todo's project is `"getpipher"` — fix the assertion `v3.todos[1]!.project === "getpither"` to `"getpipher"` (the v2 input uses `"getpipher"`). Make sure the assertion matches the input.
+Note: in Case 4, the curated armory todo's project is `"getpipher"` — fix the assertion `v3.todos[1]!.project` to match the input `"getpipher"` (the v2 input uses `"getpipher"`). Make sure the assertion matches the input.
 
 - [ ] **Step 6: Run the migrate suite**
 

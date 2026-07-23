@@ -178,7 +178,7 @@ notThrows("zero open under cap ok", () => checkProjectCap({ project: "pi", curre
 throws("at-cap add throws (currentOpen == maxOpen)", () => checkProjectCap({ project: "pi", currentOpen: 8, maxOpen: 8 }));
 throws("over-cap add throws", () => checkProjectCap({ project: "pi", currentOpen: 12, maxOpen: 8 }));
 throws("project cap message has raise hint", () => checkProjectCap({ project: "pi", currentOpen: 8, maxOpen: 8 }), "raise maxOpen");
-throws("project cap message has project name", () => checkProjectCap({ project: "getpipher", currentOpen: 8, maxOpen: 8 }), "getpipher");
+throws("project cap message has project name", () => checkProjectCap({ project: "foo-bar", currentOpen: 8, maxOpen: 8 }), "foo-bar");
 // maxOpen 0 = no open todos allowed
 throws("maxOpen 0 + any add throws", () => checkProjectCap({ project: "pi", currentOpen: 0, maxOpen: 0 }));
 
@@ -953,13 +953,13 @@ with:
 Replace:
 
 ```ts
-      "Use todo (action:'project_rename', oldName, newName) to rename or merge a project (rewrites live + archive + registry). Use it to fix typo'd project strings (e.g. getpither → getpipher). Rename onto an existing name merges (consolidates the old project into the new). Advisory maxOpen caps are NOT enforced in v0.4.0 — they only drive a health flag; enforcement lands in v0.5.0.",
+      "Use todo (action:'project_rename', oldName, newName) to rename or merge a project (rewrites live + archive + registry). Use it to fix typo'd project strings (e.g. foo-bat → foo-bar). Rename onto an existing name merges (consolidates the old project into the new). Advisory maxOpen caps are NOT enforced in v0.4.0 — they only drive a health flag; enforcement lands in v0.5.0.",
 ```
 
 with:
 
 ```ts
-      "Use todo (action:'project_rename', oldName, newName) to rename or merge a project (rewrites live + archive + registry). Use it to fix typo'd project strings (e.g. getpither → getpipher). Rename onto an existing name merges (consolidates the old project into the new). Per-project maxOpen caps are ENFORCED (block-on-add); they also drive a PROJECT_OVER health flag when breached.",
+      "Use todo (action:'project_rename', oldName, newName) to rename or merge a project (rewrites live + archive + registry). Use it to fix typo'd project strings (e.g. foo-bat → foo-bar). Rename onto an existing name merges (consolidates the old project into the new). Per-project maxOpen caps are ENFORCED (block-on-add); they also drive a PROJECT_OVER health flag when breached.",
 ```
 
 - [ ] **Step 3: Verify syntax**
@@ -1036,7 +1036,7 @@ Insert a new section immediately after the "Project-scope management (v0.4.0)" s
 ```md
 ## Caps enforcement (v0.5.0)
 
-Three caps keep the store (and its auto-injected prompt block) from bloating silently — the forcing-function half of [issue #1](https://github.com/getpither/armory-todo/issues/1):
+Three caps keep the store (and its auto-injected prompt block) from bloating silently — the forcing-function half of [issue #1](https://github.com/getpipher/armory-todo/issues/1):
 
 1. **Count cap (per-project `maxOpen`, enforced).** A project's `maxOpen` slot (set via the Projects tab → Set maxOpen, or `setProjectMaxOpen`) **blocks `add`** when the project is at its cap, and **blocks a project-move** of an `open`/`in_progress` todo into a capped project. The cap is on the `open` count (matches the `PROJECT_OVER` health flag); `in_progress` doesn't count. Un-park (`parked→open`) is intentionally **not** blocked — reactivating deferred work isn't adding new work. The block message tells you how to raise/clear the cap. `maxOpen: null` (default) = uncapped.
 

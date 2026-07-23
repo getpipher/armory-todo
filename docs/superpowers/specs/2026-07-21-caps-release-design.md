@@ -95,7 +95,7 @@ Error messages (actionable, surfaced verbatim to the agent/user via the existing
 ```
 ## Open TODOs (23) — ⚠ over budget (cap 15)
 23 open+in_progress across 5 projects
-over-budget: getpither 9/8, sip-protocol 6/5
+over-budget: getpipher 9/8, sip-protocol 6/5
 run `todo list` or `/todo` to see the full list
 ```
 
@@ -219,4 +219,4 @@ brainstorm ✅ → spec (this doc) → RECTOR reviews → writing-plans → exec
 - Zero runtime deps (node:fs only). 2-space indent. No TODO/FIXME. No AI attribution.
 - Tests: node:test via tsx. `npm test` must stay green (331 baseline + new).
 - Commits: `feat(scope): …` per task. PR → `--merge --delete-branch`.
-- getpither UX mental model (in `~/local-dev/getpipher/AGENTS.md`): interactive first (panel) for humans, CLI-style (tool actions) for the agent. New enforcement surfaces (block-on-add error, over-cap injection summary) follow this — the error is the agent's programmatic surface; the panel needs no add flow.
+- getpipher UX mental model (in `~/local-dev/getpipher/AGENTS.md`): interactive first (panel) for humans, CLI-style (tool actions) for the agent. New enforcement surfaces (block-on-add error, over-cap injection summary) follow this — the error is the agent's programmatic surface; the panel needs no add flow.

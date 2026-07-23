@@ -301,7 +301,7 @@ const mode = statSync(join(tmp, "projects.json")).mode & 0o777;
 ok("registry file mode 0600", mode === 0o600, `(mode ${mode.toString(8)})`);
 
 // --- reconcileRegistry: appends unknown from live + archive, idempotent ---
-const a = addTodo({ title: "T1", project: "getpipher" });
+const a = addTodo({ title: "T1", project: "foo-bar" });
 const arch0: ArchiveStore = { version: 3, updatedAt: "x", todos: [{ ...a, project: "bug-bounty", status: "done", closedAt: "x" }] };
 saveArchive(arch0);
 let reg = loadRegistry();
@@ -316,15 +316,15 @@ const res3 = reconcileRegistry(res1.reg, listTodos({ status: "all", limit: 200 }
 ok("reconcile no (no project) entry", !res3.reg.projects.some((p) => p.name === ""));
 
 // --- getProjectEntry hit/miss ---
-ok("getProjectEntry hit", getProjectEntry(res3.reg, "getpipher") !== undefined);
+ok("getProjectEntry hit", getProjectEntry(res3.reg, "foo-bar") !== undefined);
 ok("getProjectEntry miss", getProjectEntry(res3.reg, "nope") === undefined);
 
 // --- setProjectMaxOpen: create-if-unknown, set number, null clears ---
-const e1 = setProjectMaxOpen(res3.reg, "getpipher", 8);
+const e1 = setProjectMaxOpen(res3.reg, "foo-bar", 8);
 eq("setMaxOpen sets 8", e1.maxOpen, 8);
 const e2 = setProjectMaxOpen(res3.reg, "brand-new", 3);
 ok("setMaxOpen creates unknown", getProjectEntry(res3.reg, "brand-new") !== undefined && e2.maxOpen === 3);
-const e3 = setProjectMaxOpen(res3.reg, "getpipher", null);
+const e3 = setProjectMaxOpen(res3.reg, "foo-bar", null);
 eq("setMaxOpen null clears", e3.maxOpen, null);
 let threw = false;
 try { setProjectMaxOpen(res3.reg, "", 5); } catch { threw = true; }
@@ -336,23 +336,23 @@ ok("setMaxOpen negative throws", threw2);
 // --- renameProject: rewrites live + archive + registry; merge; self no-op ---
 // (fresh isolated registry for rename tests)
 rmSync(join(tmp, "projects.json"), { force: true });
-addTodo({ title: "R1", project: "getpither" });
-addTodo({ title: "R2", project: "getpither" });
-const arch1: ArchiveStore = { version: 3, updatedAt: "x", todos: [{ ...a, project: "getpither", status: "done", closedAt: "x" }] };
+addTodo({ title: "R1", project: "foo-bat" });
+addTodo({ title: "R2", project: "foo-bat" });
+const arch1: ArchiveStore = { version: 3, updatedAt: "x", todos: [{ ...a, project: "foo-bat", status: "done", closedAt: "x" }] };
 saveArchive(arch1);
 let regR = loadRegistry();
 reconcileRegistry(regR, listTodos({ status: "all", limit: 200 }), loadArchiveAsync().todos);
 saveRegistry(regR);
-// merge: getpither → getpipher (getpipher already exists from earlier? no — fresh. so create)
-const rr = renameProject("getpither", "getpipher");
+// merge: foo-bat → foo-bar (foo-bar already exists from earlier? no — fresh. so create)
+const rr = renameProject("foo-bat", "foo-bar");
 eq("rename liveRenamed", rr.liveRenamed, 2);
 eq("rename archivedRenamed", rr.archivedRenamed, 1);
 ok("rename to-new → merged=false", !rr.merged);
-ok("rename removed old entry", getProjectEntry(loadRegistry(), "getpither") === undefined);
-ok("rename created new entry", getProjectEntry(loadRegistry(), "getpipher") !== undefined);
+ok("rename removed old entry", getProjectEntry(loadRegistry(), "foo-bat") === undefined);
+ok("rename created new entry", getProjectEntry(loadRegistry(), "foo-bar") !== undefined);
 
 // self-rename no-op
-const self = renameProject("getpipher", "getpipher");
+const self = renameProject("foo-bar", "foo-bar");
 eq("self-rename liveRenamed 0", self.liveRenamed, 0);
 eq("self-rename merged false", self.merged, false);
 
@@ -656,20 +656,20 @@ eq("sip maxOpen 0", sip3.maxOpen, 0);
 ok("sip over (1 > 0)", sip3.over);
 
 // --- typo: 1-todo project with near-sibling ---
-addTodo({ title: "z", project: "getpither" });   // 1 todo, near "getpipher"?
-addTodo({ title: "y", project: "getpipher" });    // sibling
+addTodo({ title: "z", project: "foo-bat" });   // 1 todo, near "foo-bar"?
+addTodo({ title: "y", project: "foo-bar" });    // sibling
 const o4 = projectsOverview();
-const typo = o4.rows.find((r) => r.name === "getpither")!;
-ok("getpither typo (near getpipher)", typo.typo);
-const notTypo = o4.rows.find((r) => r.name === "getpipher")!;
-ok("getpipher not typo (>1 todo)", !notTypo.typo);
+const typo = o4.rows.find((r) => r.name === "foo-bat")!;
+ok("foo-bat typo (near foo-bar)", typo.typo);
+const notTypo = o4.rows.find((r) => r.name === "foo-bar")!;
+ok("foo-bar not typo (>1 todo)", !notTypo.typo);
 
 // --- lastUpdated = max live updatedAt, "" if no live todos ---
 const o5 = projectsOverview();
 ok("pi lastUpdated non-empty", o5.rows.find((r) => r.name === "pi")!.lastUpdated.length > 0);
 
 // --- registry seeded via reconcile (projectsOverview persists) ---
-ok("registry has getpither", loadRegistry().projects.some((p) => p.name === "getpither"));
+ok("registry has foo-bat", loadRegistry().projects.some((p) => p.name === "foo-bat"));
 
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
@@ -826,8 +826,8 @@ saveRegistry(reg);
 for (let i = 0; i < 9; i++) addTodo({ title: `large-${i}`, project: "large-proj" });
 
 // PROJECT_TYPO: 1 todo + near-sibling
-addTodo({ title: "typo", project: "getpither" });
-addTodo({ title: "sib", project: "getpipher" });
+addTodo({ title: "typo", project: "foo-bat" });
+addTodo({ title: "sib", project: "foo-bar" });
 
 // PROJECT_STALE: lastUpdated > activeStaleDays (30)
 const stale = addTodo({ title: "stale", project: "stale-proj" });
@@ -989,7 +989,7 @@ import type { ProjectsOverview } from "../src/projects.ts";
 const overview: ProjectsOverview = {
   rows: [
     { name: "pi", open: 3, in_progress: 0, parked: 0, done: 1, total: 4, maxOpen: 2, over: true, typo: false, lastUpdated: "2026-07-21T00:00:00.000Z" },
-    { name: "getpither", open: 0, in_progress: 0, parked: 0, done: 0, total: 1, maxOpen: null, over: false, typo: true, lastUpdated: "" },
+    { name: "foo-bat", open: 0, in_progress: 0, parked: 0, done: 0, total: 1, maxOpen: null, over: false, typo: true, lastUpdated: "" },
   ],
   totalTodos: 5,
   noProject: { count: 2, open: 1 },
