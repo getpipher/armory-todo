@@ -22,7 +22,10 @@
     "url": "https://github.com/getpipher/armory-todo/issues"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.ts"
+    }
   },
   "files": [
     "extensions",
