@@ -21,6 +21,17 @@
 
 ---
 
+## Public API
+
+The package `exports` entry (`./src/index.ts`) is the **stable public surface** —
+`addTodo`, `listTodos`, `updateTodo`, `getTodo`, `completeTodo`, `parkTodo`,
+`deleteTodo`, and the `Todo` / `AddInput` / `UpdateInput` / `ListFilter` /
+`Priority` / `Status` / `Store` types (plus `TodoError`). Other `src/*` paths
+are internal and may change without notice. Depend on `@getpipher/armory-todo`
+(the public entry), never deep-import `src/*`.
+
+---
+
 ## The problem
 
 pi sessions are ephemeral conversation branches. A TODO you tell to session A is invisible to session B unless you manually write it to a notes file *and* remember to read it next time. Every existing pi todo extension (`@juicesharp/rpiv-todo`, `@xynogen/pix-todo`, `@gonrocca/zero-pi-todo`, …) is **conversation-branch-scoped** — they persist via pi's `appendEntry()` and survive compaction + `/reload` *within a single session*. None bridge across separate sessions, and none make a fresh session aware of pending work on its own.
