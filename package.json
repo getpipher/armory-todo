@@ -21,6 +21,9 @@
   "bugs": {
     "url": "https://github.com/getpipher/armory-todo/issues"
   },
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "files": [
     "extensions",
     "src",
@@ -35,7 +38,7 @@
     ]
   },
   "scripts": {
-    "test": "for t in todo-store todo-title-notes todo-archive todo-config todo-migrate todo-health todo-hard-prune todo-auto-prune registry projects panel-data todo-caps todo-backup; do node test/$t.test.mts || exit 1; done"
+    "test": "for t in todo-store todo-title-notes todo-archive todo-config todo-migrate todo-health todo-hard-prune todo-auto-prune registry projects panel-data todo-caps todo-backup public-api; do node test/$t.test.mts || exit 1; done"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
