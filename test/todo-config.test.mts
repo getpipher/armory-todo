@@ -28,6 +28,9 @@ eq("default archiveMax 200", DEFAULT_CONFIG.health.archiveMax, 200);
 eq("default archiveOldDays 180", DEFAULT_CONFIG.health.archiveOldDays, 180);
 eq("default perProjectDefaultMax 8", DEFAULT_CONFIG.health.perProjectDefaultMax, 8);
 
+// --- v0.5.5: notify.sessionStartCount ---
+eq("default notify.sessionStartCount true", DEFAULT_CONFIG.notify.sessionStartCount, true);
+
 // --- missing config → defaults written ---
 const cfg = loadConfig();
 eq("loadConfig returns defaults when missing", cfg.prune.defaultAgeDays, 7);
@@ -91,6 +94,27 @@ writeFileSync(join(tmp, "todo.config.json"), JSON.stringify({
   health: { activeMaxOpen: 15, activeStaleDays: 30, parkedMax: 10, parkedStaleDays: 60, archiveMax: 200, archiveOldDays: 180, perProjectDefaultMax: 8, maxNotesBytes: "big" },
 }, null, 2));
 eq("non-number maxNotesBytes -> default 8192", loadConfig().health.maxNotesBytes, 8192);
+
+// forward-merge: an old config (no notify) gets the default true
+writeFileSync(join(tmp, "todo.config.json"), JSON.stringify({
+  version: 1,
+  prune: { defaultAgeDays: 7, hardAgeDays: 180, statuses: ["done", "cancelled"] },
+  health: { activeMaxOpen: 15, activeStaleDays: 30, parkedMax: 10, parkedStaleDays: 60, archiveMax: 200, archiveOldDays: 180, perProjectDefaultMax: 8, maxNotesBytes: 8192 },
+}, null, 2));
+eq("old config (no notify) -> sessionStartCount default true", loadConfig().notify.sessionStartCount, true);
+
+// explicit false respected
+saveConfig({ ...loadConfig(), notify: { sessionStartCount: false } });
+eq("explicit sessionStartCount false respected", loadConfig().notify.sessionStartCount, false);
+
+// non-boolean -> default true
+writeFileSync(join(tmp, "todo.config.json"), JSON.stringify({
+  version: 1,
+  prune: { defaultAgeDays: 7, hardAgeDays: 180, statuses: ["done", "cancelled"] },
+  health: { activeMaxOpen: 15, activeStaleDays: 30, parkedMax: 10, parkedStaleDays: 60, archiveMax: 200, archiveOldDays: 180, perProjectDefaultMax: 8, maxNotesBytes: 8192 },
+  notify: { sessionStartCount: "no" },
+}, null, 2));
+eq("non-boolean sessionStartCount -> default true", loadConfig().notify.sessionStartCount, true);
 
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);

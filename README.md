@@ -221,6 +221,23 @@ Full design + decisions:
 |---|---|---|
 | `TODO_DIR` | `~/.pi/agent/todo/` | override the store folder (tests / multiple profiles) |
 
+`todo.config.json` (in `TODO_DIR`) holds prune ages, health thresholds, and notify toggles. All values are optional — missing fields are merged with defaults on load.
+
+```jsonc
+{
+  "version": 1,
+  "prune":  { "defaultAgeDays": 7, "hardAgeDays": 180, "statuses": ["done", "cancelled"] },
+  "health": { "activeMaxOpen": 15, "activeStaleDays": 30, "parkedMax": 10,
+              "parkedStaleDays": 60, "archiveMax": 200, "archiveOldDays": 180,
+              "perProjectDefaultMax": 8, "maxNotesBytes": 8192 },
+  "notify": { "sessionStartCount": true }
+}
+```
+
+| `notify.*` | default | purpose |
+|---|---|---|
+| `sessionStartCount` | `true` | Show the `armory-todo: N open TODOs` startup line. Set `false` to silence it — safety messages (wipe-recovery alert, auto-prune undo info) still surface. |
+
 Run the store tests: `npm test` (315/315 across 11 suites).
 
 ## Known issues

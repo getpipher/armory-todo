@@ -39,7 +39,7 @@ import { healthReport } from "../src/health";
 import { hardPrune } from "../src/hard-prune";
 import { TodoPanel } from "../src/panel";
 import { autoPruneOnSessionStart } from "../src/auto-prune";
-import { loadConfig } from "../src/config";
+import { loadConfig, type TodoConfig } from "../src/config";
 import { projectsOverview } from "../src/projects";
 import { renameProject } from "../src/registry";
 import { readAndClearWipeAlert } from "../src/backup";
@@ -90,10 +90,12 @@ export default function (pi: ExtensionAPI) {
       } catch {
         // alert optional
       }
+      // One config load reused for the prune age + the notify-suppress flag.
+      let cfg: TodoConfig | undefined;
+      try { cfg = loadConfig(); } catch { /* config optional */ }
       let autoMsg = "";
-      let ageDays = 7;
+      let ageDays = cfg?.prune.defaultAgeDays ?? 7;
       try {
-        ageDays = loadConfig().prune.defaultAgeDays;
         const ap = autoPruneOnSessionStart();
         if (ap) {
           const lines = ap.items.map((i) => `  [${i.id}] ${i.status}  ${i.title}`);
@@ -102,17 +104,27 @@ export default function (pi: ExtensionAPI) {
       } catch {
         // auto-prune optional — don't crash the session notify
       }
+      const showCount = cfg?.notify?.sessionStartCount !== false;
       const open = listTodos();
-      let msg = `armory-todo: ${open.length} open TODO${open.length === 1 ? "" : "s"}${autoMsg}`;
-      try {
-        const report = healthReport();
-        if (report.flags.length > 0) {
-          msg += `${autoMsg ? "\n" : " — "}` + `⚠ ${report.flags.length} bloat signal${report.flags.length === 1 ? "" : "s"} (run /todo health)`;
+      let msg = "";
+      if (showCount) {
+        msg = `armory-todo: ${open.length} open TODO${open.length === 1 ? "" : "s"}${autoMsg}`;
+        try {
+          const report = healthReport();
+          if (report.flags.length > 0) {
+            msg += `${autoMsg ? "\n" : " — "}` + `⚠ ${report.flags.length} bloat signal${report.flags.length === 1 ? "" : "s"} (run /todo health)`;
+          }
+        } catch {
+          // health check optional
         }
-      } catch {
-        // health check optional
+      } else if (autoMsg) {
+        // Count line suppressed; still surface the auto-prune undo info.
+        msg = `armory-todo${autoMsg}`;
       }
-      if (ctx.hasUI) ctx.ui.notify((wipeMsg ? wipeMsg + "\n" : "") + msg, "info");
+      if (ctx.hasUI) {
+        const out = (wipeMsg ? wipeMsg + "\n" : "") + msg;
+        if (out) ctx.ui.notify(out, "info");
+      }
     } catch {
       // store unavailable — never crash the session
     }

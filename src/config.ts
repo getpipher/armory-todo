@@ -28,10 +28,18 @@ export interface HealthConfig {
   maxNotesBytes: number;         // v0.5.0: per-todo notes byte cap (hard-reject at add/update)
 }
 
+export interface NotifyConfig {
+  /** Show the `armory-todo: N open TODOs` session-start count line.
+   *  Safety messages (wipe-recovery alert, auto-prune undo info) still surface
+   *  when this is false. Default true. */
+  sessionStartCount: boolean;
+}
+
 export interface TodoConfig {
   version: 1;
   prune: PruneConfig;
   health: HealthConfig;
+  notify: NotifyConfig;
 }
 
 export const DEFAULT_CONFIG: TodoConfig = {
@@ -50,6 +58,9 @@ export const DEFAULT_CONFIG: TodoConfig = {
     archiveOldDays: 180,
     perProjectDefaultMax: 8,
     maxNotesBytes: 8192,
+  },
+  notify: {
+    sessionStartCount: true,
   },
 };
 
@@ -77,10 +88,13 @@ export function loadConfig(): TodoConfig {
     if (health.maxNotesBytes === undefined || typeof health.maxNotesBytes !== "number" || Number.isNaN(health.maxNotesBytes) || health.maxNotesBytes < 0) {
       health.maxNotesBytes = DEFAULT_CONFIG.health.maxNotesBytes;
     }
+    const notify = { ...DEFAULT_CONFIG.notify, ...(parsed.notify ?? {}) };
+    if (typeof notify.sessionStartCount !== "boolean") notify.sessionStartCount = true;
     return {
       version: 1,
       prune: { ...DEFAULT_CONFIG.prune, ...parsed.prune },
       health,
+      notify,
     };
   } catch {
     try {
