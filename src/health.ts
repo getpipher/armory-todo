@@ -87,7 +87,7 @@ export function healthReport(): HealthReport {
   // stale actives are advisory-only ORPHANs. Derived on every read, never persisted.
   const policySources = new Set(Object.keys(config.reap.policy));
   const orphanTodos = actionable.filter((t) =>
-    !policySources.has(t.source) && daysAgo(t.updatedAt) > config.reap.orphanFlagAfterDays
+    !policySources.has(t.source) && daysAgo(t.updatedAt) >= config.reap.orphanFlagAfterDays
   );
   const orphan = {
     count: orphanTodos.length,
@@ -140,7 +140,7 @@ export function healthReport(): HealthReport {
   const suggestions: string[] = [];
   if (archiveOld > 0) suggestions.push(`archive: ${archiveOld} items older than ${h.archiveOldDays}d → consider \`prune --hard --box archive --older-than ${h.archiveOldDays} --confirm\``);
   if (activeStale > 0) suggestions.push(`active: ${activeStale} open TODOs untouched for ${h.activeStaleDays}d → park or close them`);
-  if (orphan.count > 0) suggestions.push(`orphan: ${orphan.count} active TODOs untouched > ${config.reap.orphanFlagAfterDays}d (non-policy source) → review + close/park (oldest ${orphan.oldestDays}d)`);
+  if (orphan.count > 0) suggestions.push(`orphan: ${orphan.count} active TODOs untouched >= ${config.reap.orphanFlagAfterDays}d (non-policy source) → review + close/park (oldest ${orphan.oldestDays}d)`);
   if (parkedStale > 0) suggestions.push(`parked: ${parkedStale} parked > ${h.parkedStaleDays}d → restore or hard-prune`);
   if (actionable.length > h.activeMaxOpen) suggestions.push(`active: ${actionable.length} open+in_progress (max ${h.activeMaxOpen}) → close or park some before adding more`);
   if (notesBytes.max > h.maxNotesBytes) {
