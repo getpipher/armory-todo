@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -163,6 +163,33 @@ saveConfig({ version: 1, prune: { defaultAgeDays: 7, hardAgeDays: 180, statuses:
 const rep3 = healthReport();
 ok("no NOTES_OVER when under cap", !rep3.flags.includes("NOTES_OVER"));
 eq("maxId tracked under cap (biggest note)", rep3.notesBytes.maxId, "td-big");
+
+// ===== v0.6.0: ORPHAN flag is source-aware, active-only, and transient =====
+// RE-ISOLATE before writing: prior sections delete TODO_DIR during cleanup.
+process.env.TODO_DIR = tmp;
+const sixteenDaysAgo = new Date(now - 16 * 86400_000).toISOString();
+saveConfig({
+  version: 1,
+  prune: { defaultAgeDays: 7, hardAgeDays: 180, statuses: ["done", "cancelled"] },
+  health: { activeMaxOpen: 15, activeStaleDays: 30, parkedMax: 10, parkedStaleDays: 60, archiveMax: 200, archiveOldDays: 180, perProjectDefaultMax: 8, maxNotesBytes: 8192 },
+  notify: { sessionStartCount: true },
+  reap: { orphanFlagAfterDays: 14, policy: { "armory-fleet": { reapAfterDays: 2, reapTo: "cancelled" } } },
+});
+saveStore({ version: 3, updatedAt: fresh, todos: [
+  { id: "td-orphan-open", title: "dormant open work", notes: "", project: "pi", tags: [], priority: "med", status: "open", source: "", createdAt: sixteenDaysAgo, updatedAt: sixteenDaysAgo, closedAt: null },
+  { id: "td-orphan-ip", title: "dormant in-progress work", notes: "", project: "pi", tags: [], priority: "med", status: "in_progress", source: "manual-agent", createdAt: sixteenDaysAgo, updatedAt: sixteenDaysAgo, closedAt: null },
+  { id: "td-policy-stale", title: "stale fleet run", notes: "", project: "fleet", tags: [], priority: "med", status: "open", source: "armory-fleet", createdAt: sixteenDaysAgo, updatedAt: sixteenDaysAgo, closedAt: null },
+  { id: "td-real-fresh", title: "fresh real work", notes: "", project: "pi", tags: [], priority: "med", status: "open", source: "", createdAt: fresh, updatedAt: fresh, closedAt: null },
+] });
+const orphanReport = healthReport();
+ok("ORPHAN flag present for stale non-policy active todos", orphanReport.flags.includes("ORPHAN"));
+eq("ORPHAN count includes open + in_progress", orphanReport.orphan.count, 2);
+eq("ORPHAN oldestDays uses updatedAt age", orphanReport.orphan.oldestDays, 16);
+ok("ORPHAN ids include non-policy active todos", orphanReport.orphan.ids.includes("td-orphan-open") && orphanReport.orphan.ids.includes("td-orphan-ip"));
+ok("ORPHAN excludes policy-source fleet todo", !orphanReport.orphan.ids.includes("td-policy-stale"));
+ok("ORPHAN suggestion is actionable", orphanReport.suggestions.some((s) => s.includes("orphan") && s.includes("close/park")));
+const persistedAfterHealth = JSON.parse(readFileSync(join(tmp, "todo.json"), "utf8")) as { todos: Array<Record<string, unknown>> };
+ok("ORPHAN is transient — no marker persisted", persistedAfterHealth.todos.every((t) => !("orphan" in t) && !("__orphan" in t) && !("orphanDays" in t)));
 
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
