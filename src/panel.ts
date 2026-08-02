@@ -26,7 +26,7 @@ import { loadConfig, saveConfig, type TodoConfig } from "./config.ts";
 import { healthReport } from "./health.ts";
 import { projectsOverview } from "./projects.ts";
 import { renameProject, setProjectMaxOpen, loadRegistry, saveRegistry } from "./registry.ts";
-import { todoToItem, archiveSummaryToItems, actionsForTodo, configToSettingItems, todoDoneItem, actionsForDoneTodo, projectOverviewToItems, actionsForProject, noProjectSummaryItem } from "./panel-data.ts";
+import { todoToItem, archiveSummaryToItems, actionsForTodo, configToSettingItems, todoDoneItem, actionsForDoneTodo, projectOverviewToItems, actionsForProject, noProjectSummaryItem, countReapedFromAudit } from "./panel-data.ts";
 
 export type Box = "active" | "parked" | "done" | "archive" | "projects" | "config";
 const BOXES: Box[] = ["active", "parked", "done", "archive", "projects", "config"];
@@ -54,6 +54,7 @@ export class TodoPanel extends Container {
   private settingsList: SettingsList | null = null;
   private config: TodoConfig;
   private healthFlags: string[] = [];
+  private orphanIds = new Set<string>();
   private projectFilterName = "";      // set by the "Filter active to project" action
   private projectEditKind: "rename" | "setmax" | null = null;
   private projectEditName = "";       // which project is being edited
@@ -64,7 +65,6 @@ export class TodoPanel extends Container {
     this.onDone = opts.onDone;
     this.onNotify = opts.onNotify;
     this.config = loadConfig();
-    try { this.healthFlags = healthReport().flags; } catch { /* optional */ }
 
     const accent = (s: string) => this.theme.fg("accent", s);
     this.addChild(new DynamicBorder(accent));
@@ -132,6 +132,11 @@ export class TodoPanel extends Container {
     } else if (this.currentBox === "config") {
       this.renderConfigBox();
     } else {
+      if (this.currentBox === "archive") {
+        const reaped = countReapedFromAudit();
+        this.addChild(new Text(this.theme.fg("muted", `  reaped: ${reaped} runs auto-cancelled · restore with todo restore <id>`), 0, 0));
+        this.addChild(new Spacer(1));
+      }
       this.addChild(this.selectList);
     }
 
@@ -144,13 +149,20 @@ export class TodoPanel extends Container {
 
   private refreshList(): void {
     const filter = this.filterInput.getValue();
+    try {
+      const report = healthReport();
+      this.healthFlags = report.flags;
+      this.orphanIds = new Set(report.orphan.ids);
+    } catch {
+      // health is advisory; retain the last successful snapshot
+    }
     if (this.currentBox === "active") {
       const project = this.projectFilterName || undefined;
       const todos = listTodos({ project, text: filter || undefined, limit: 50 });
-      this.setSelectItems(todos.map(todoToItem));
+      this.setSelectItems(todos.map((t) => todoToItem(t, this.orphanIds.has(t.id))));
     } else if (this.currentBox === "parked") {
       const todos = listTodos({ status: "parked", text: filter || undefined, limit: 50 });
-      this.setSelectItems(todos.map(todoToItem));
+      this.setSelectItems(todos.map((t) => todoToItem(t)));
     } else if (this.currentBox === "done") {
       const items = listDoneUnified({ text: filter || undefined, limit: 50 });
       this.setSelectItems(items.map(todoDoneItem));
@@ -160,7 +172,7 @@ export class TodoPanel extends Container {
         this.setSelectItems(archiveSummaryToItems(s));
       } else {
         const res = listArchived({ text: filter, limit: 50 });
-        this.setSelectItems(res.items.map(todoToItem));
+        this.setSelectItems(res.items.map((t) => todoToItem(t)));
       }
     } else if (this.currentBox === "projects") {
       const overview = projectsOverview();
@@ -388,6 +400,8 @@ export class TodoPanel extends Container {
       case "hardAgeDays": return String(c.prune.hardAgeDays);
       case "activeMaxOpen": return String(c.health.activeMaxOpen);
       case "activeStaleDays": return String(c.health.activeStaleDays);
+      case "orphanFlagAfterDays": return String(c.reap.orphanFlagAfterDays);
+      case "armoryFleetReapAfterDays": return String(c.reap.policy["armory-fleet"]?.reapAfterDays ?? 2);
       case "parkedMax": return String(c.health.parkedMax);
       case "parkedStaleDays": return String(c.health.parkedStaleDays);
       case "archiveMax": return String(c.health.archiveMax);
@@ -405,6 +419,8 @@ export class TodoPanel extends Container {
       case "hardAgeDays": this.config.prune.hardAgeDays = n; break;
       case "activeMaxOpen": this.config.health.activeMaxOpen = n; break;
       case "activeStaleDays": this.config.health.activeStaleDays = n; break;
+      case "orphanFlagAfterDays": this.config.reap.orphanFlagAfterDays = n; break;
+      case "armoryFleetReapAfterDays": this.config.reap.policy["armory-fleet"] = { reapAfterDays: n, reapTo: "cancelled" }; break;
       case "parkedMax": this.config.health.parkedMax = n; break;
       case "parkedStaleDays": this.config.health.parkedStaleDays = n; break;
       case "archiveMax": this.config.health.archiveMax = n; break;

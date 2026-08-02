@@ -1,6 +1,6 @@
 // Auto-prune on session_start — the deterministic age-gated prune.
 // Run: node test/todo-auto-prune.test.mts
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -41,6 +41,7 @@ function seed(dir: string) {
   ok("ap: rich items present", res!.items.length === 2);
   ok("ap: stale done moved to archive", loadArchive().todos.some((t) => t.id === staleDone.id));
   ok("ap: stale cancelled moved to archive", loadArchive().todos.some((t) => t.id === staleCancelled.id));
+  ok("ap: intentional prune does not emit false wipe alert", !existsSync(join(dir, ".wipe-alert")));
   const live = loadStore();
   ok("ap: fresh done stays in live", live.todos.some((t) => t.id === freshDone.id));
   ok("ap: open untouched", live.todos.some((t) => t.id === open.id));
@@ -96,6 +97,37 @@ function seed(dir: string) {
   eq("ap: 3d-old prunes when ageDays=1", res!.moved, 1);
   // restore default
   cfg.prune.defaultAgeDays = 7; saveConfig(cfg);
+  delete process.env.TODO_DIR;
+  rmSync(dir, { recursive: true, force: true });
+}
+
+// Case 5 (v0.6.0): maintenance ordering regression — auto-prune first,
+// then reap stale policy-source actives in the same session-start sequence.
+{
+  const dir = seed(mkdtempSync(join(tmpdir(), "armory-ap-reap-")));
+  const { addTodo, completeTodo, loadStore, saveStore } = await import("../src/todo-store.ts");
+  const { loadArchive } = await import("../src/archive.ts");
+  const { reapStaleActive } = await import("../src/reap.ts");
+  const DAY = 86400_000;
+
+  const done = addTodo({ title: "old done", source: "" });
+  completeTodo(done.id);
+  const fleet = addTodo({ title: "stale fleet run", source: "armory-fleet" });
+  const store = loadStore();
+  const doneRow = store.todos.find((t) => t.id === done.id)!;
+  doneRow.closedAt = new Date(Date.now() - 8 * DAY).toISOString();
+  const fleetRow = store.todos.find((t) => t.id === fleet.id)!;
+  fleetRow.updatedAt = new Date(Date.now() - 3 * DAY).toISOString();
+  saveStore(store);
+
+  const ap = autoPruneOnSessionStart();
+  const rp = reapStaleActive();
+  eq("session maintenance auto-prunes first", ap?.moved, 1);
+  eq("session maintenance reaps second", rp?.reaped, 1);
+  ok("auto-pruned todo moved to archive", loadArchive().todos.some((t) => t.id === done.id));
+  eq("reaped fleet todo is cancelled in archive", loadArchive().todos.find((t) => t.id === fleet.id)?.status, "cancelled");
+  ok("reaped fleet todo left live store", !loadStore().todos.some((t) => t.id === fleet.id));
+
   delete process.env.TODO_DIR;
   rmSync(dir, { recursive: true, force: true });
 }

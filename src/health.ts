@@ -37,7 +37,8 @@ export type HealthFlag =
   | "PARKED_LARGE" | "PARKED_STALE"
   | "ARCHIVE_LARGE" | "ARCHIVE_OLD"
   | "NOTES_OVER"
-  | "PROJECT_OVER" | "PROJECT_TYPO" | "PROJECT_LARGE" | "PROJECT_STALE";
+  | "PROJECT_OVER" | "PROJECT_TYPO" | "PROJECT_LARGE" | "PROJECT_STALE"
+  | "ORPHAN";
 
 export interface ProjectHealth {
   name: string;
@@ -55,6 +56,7 @@ export interface HealthReport {
   parked: ParkedHealth;
   archive: ArchiveHealth;
   notesBytes: NotesBytes;
+  orphan: { count: number; oldestDays: number; ids: string[] };
   flags: HealthFlag[];
   suggestions: string[];
   projects: ProjectHealth[];   // only projects with ≥1 flag, sorted open desc
@@ -80,6 +82,20 @@ export function healthReport(): HealthReport {
   const ipTodos = live.todos.filter((t) => t.status === "in_progress");
   const parkedTodos = live.todos.filter((t) => t.status === "parked");
   const actionable = [...openTodos, ...ipTodos];
+
+  // v0.6.0: policy-source stale actives are auto-reaped elsewhere; non-policy
+  // stale actives are advisory-only ORPHANs. Derived on every read, never persisted.
+  const policySources = new Set(Object.keys(config.reap.policy));
+  const orphanTodos = actionable.filter((t) =>
+    !policySources.has(t.source) && daysAgo(t.updatedAt) >= config.reap.orphanFlagAfterDays
+  );
+  const orphan = {
+    count: orphanTodos.length,
+    oldestDays: orphanTodos.length
+      ? Math.floor(Math.max(...orphanTodos.map((t) => daysAgo(t.updatedAt))))
+      : 0,
+    ids: orphanTodos.map((t) => t.id),
+  };
 
   const activeStale = openTodos.filter((t) => daysAgo(t.updatedAt) > h.activeStaleDays).length;
   const parkedStale = parkedTodos.filter((t) => daysAgo(t.updatedAt) > h.parkedStaleDays).length;
@@ -115,6 +131,7 @@ export function healthReport(): HealthReport {
   if (actionable.length > h.activeMaxOpen) flags.push("ACTIVE_LARGE");
   if (notesBytes.max > h.maxNotesBytes) flags.push("NOTES_OVER");
   if (activeStale > 0) flags.push("ACTIVE_STALE");
+  if (orphan.count > 0) flags.push("ORPHAN");
   if (parkedTodos.length > h.parkedMax) flags.push("PARKED_LARGE");
   if (parkedStale > 0) flags.push("PARKED_STALE");
   if (archive.todos.length > h.archiveMax) flags.push("ARCHIVE_LARGE");
@@ -123,6 +140,7 @@ export function healthReport(): HealthReport {
   const suggestions: string[] = [];
   if (archiveOld > 0) suggestions.push(`archive: ${archiveOld} items older than ${h.archiveOldDays}d → consider \`prune --hard --box archive --older-than ${h.archiveOldDays} --confirm\``);
   if (activeStale > 0) suggestions.push(`active: ${activeStale} open TODOs untouched for ${h.activeStaleDays}d → park or close them`);
+  if (orphan.count > 0) suggestions.push(`orphan: ${orphan.count} active TODOs untouched >= ${config.reap.orphanFlagAfterDays}d (non-policy source) → review + close/park (oldest ${orphan.oldestDays}d)`);
   if (parkedStale > 0) suggestions.push(`parked: ${parkedStale} parked > ${h.parkedStaleDays}d → restore or hard-prune`);
   if (actionable.length > h.activeMaxOpen) suggestions.push(`active: ${actionable.length} open+in_progress (max ${h.activeMaxOpen}) → close or park some before adding more`);
   if (notesBytes.max > h.maxNotesBytes) {
@@ -167,5 +185,5 @@ export function healthReport(): HealthReport {
 
   const noProject = { open: live.todos.filter((t) => t.project.trim() === "" && t.status === "open").length };
 
-  return { active, parked, archive: arch, notesBytes, flags, suggestions, projects: projectHealth, noProject };
+  return { active, parked, archive: arch, notesBytes, orphan, flags, suggestions, projects: projectHealth, noProject };
 }

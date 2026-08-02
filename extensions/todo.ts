@@ -39,6 +39,7 @@ import { healthReport } from "../src/health";
 import { hardPrune } from "../src/hard-prune";
 import { TodoPanel } from "../src/panel";
 import { autoPruneOnSessionStart } from "../src/auto-prune";
+import { reapStaleActive } from "../src/reap";
 import { loadConfig, type TodoConfig } from "../src/config";
 import { projectsOverview } from "../src/projects";
 import { renameProject } from "../src/registry";
@@ -104,22 +105,38 @@ export default function (pi: ExtensionAPI) {
       } catch {
         // auto-prune optional — don't crash the session notify
       }
+      // v0.6.0: source-aware stale-active reap runs AFTER auto-prune. Reaped
+      // todos enter the archive as cancelled (immediately restorable), never deleted.
+      let reapMsg = "";
+      try {
+        const rp = reapStaleActive();
+        if (rp) {
+          const shownIds = rp.ids.slice(0, 5).map((id) => `[${id}]`).join(" ");
+          const more = rp.ids.length > 5 ? ` +${rp.ids.length - 5} more` : "";
+          reapMsg = ` · ♻ reaped ${rp.reaped} stale ${rp.reaped === 1 ? "run" : "runs"} (oldest ${rp.oldestDays}d) · ${shownIds}${more} — restore via \`todo restore <id>\``;
+        }
+      } catch {
+        // reap optional — never crash the session notify
+      }
       const showCount = cfg?.notify?.sessionStartCount !== false;
       const open = listTodos();
       let msg = "";
       if (showCount) {
-        msg = `armory-todo: ${open.length} open TODO${open.length === 1 ? "" : "s"}${autoMsg}`;
+        msg = `armory-todo: ${open.length} open TODO${open.length === 1 ? "" : "s"}${autoMsg}${reapMsg}`;
         try {
           const report = healthReport();
           if (report.flags.length > 0) {
             msg += `${autoMsg ? "\n" : " — "}` + `⚠ ${report.flags.length} bloat signal${report.flags.length === 1 ? "" : "s"} (run /todo health)`;
           }
+          if (report.orphan.count > 0) {
+            msg += ` · ${report.orphan.count} orphaned (oldest ${report.orphan.oldestDays}d untouched, non-policy — review in /todo)`;
+          }
         } catch {
           // health check optional
         }
-      } else if (autoMsg) {
-        // Count line suppressed; still surface the auto-prune undo info.
-        msg = `armory-todo${autoMsg}`;
+      } else if (autoMsg || reapMsg) {
+        // Count line suppressed; still surface auto-prune/reap safety messages.
+        msg = `armory-todo${autoMsg}${reapMsg}`;
       }
       if (ctx.hasUI) {
         const out = (wipeMsg ? wipeMsg + "\n" : "") + msg;

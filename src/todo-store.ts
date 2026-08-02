@@ -53,6 +53,12 @@ export interface Store {
   todos: Todo[];
 }
 
+export interface SaveStoreOptions {
+  /** Expected count-drop operation. Backups/drop snapshots/audit still run;
+   *  only the false-positive wipe sentinel is suppressed. */
+  intentionalDrop?: "reap" | "prune";
+}
+
 export interface AddInput {
   title: string;
   notes?: string;
@@ -148,7 +154,7 @@ export function loadStore(): Store {
 }
 
 /** Atomic, 0600 write. */
-export function saveStore(store: Store): void {
+export function saveStore(store: Store, options: SaveStoreOptions = {}): void {
   store.updatedAt = now();
   const path = getLivePath();
   // v0.5.1 write-audit + backup (post data-loss hardening): back up the current
@@ -168,7 +174,7 @@ export function saveStore(store: Store): void {
   }
   renameSync(tmp, path);
   appendAudit("todo", before, after, dropSnap);
-  if (after < before) writeWipeAlert(before, after, dropSnap);
+  if (after < before && !options.intentionalDrop) writeWipeAlert(before, after, dropSnap);
 }
 
 function assertPriority(p: unknown): asserts p is Priority {

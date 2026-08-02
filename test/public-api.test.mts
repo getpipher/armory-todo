@@ -9,10 +9,12 @@ import {
   completeTodo,
   parkTodo,
   deleteTodo,
+  saveStore,
   type Todo,
   type AddInput,
   type UpdateInput,
   type ListFilter,
+  type SaveStoreOptions,
 } from "../src/index.ts";
 
 test("public API re-exports the stable store subset", () => {
@@ -23,6 +25,7 @@ test("public API re-exports the stable store subset", () => {
   strictEqual(typeof completeTodo, "function");
   strictEqual(typeof parkTodo, "function");
   strictEqual(typeof deleteTodo, "function");
+  strictEqual(typeof saveStore, "function");
 });
 
 test("public API re-exports the stable types", () => {
@@ -32,6 +35,7 @@ test("public API re-exports the stable types", () => {
   const _u: UpdateInput = {};
   const _f: ListFilter = {};
   const _t: Todo | undefined = undefined;
-  void _check; void _u; void _f; void _t;
+  const _s: SaveStoreOptions = { intentionalDrop: "reap" };
+  void _check; void _u; void _f; void _t; void _s;
   strictEqual(true, true);
 });

@@ -62,6 +62,10 @@ export interface Store {
   todos: Todo[];
 }
 
+export interface SaveStoreOptions {
+  intentionalDrop?: "reap" | "prune";
+}
+
 export class TodoError extends Error {}
 
 export function addTodo(input: AddInput): Todo;
@@ -75,4 +79,4 @@ export function clearTodos(status?: Status): number;
 export function renderOpenBlock(max?: number): string;
 export function getStorePath(): string;
 export function loadStore(): Store;
-export function saveStore(store: Store): void;
+export function saveStore(store: Store, options?: SaveStoreOptions): void;
