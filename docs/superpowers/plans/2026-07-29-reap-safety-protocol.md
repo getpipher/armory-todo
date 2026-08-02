@@ -20,6 +20,7 @@
 - ORPHAN flag is **transient** — derived from `updatedAt` in `healthReport()`, never persisted to the Todo record (no schema bump).
 - Defaults (locked in spec §4): fleet `reapAfterDays: 2`, `reapTo: "cancelled"`; non-fleet `orphanFlagAfterDays: 14`; reap-able list = `["armory-fleet"]`; stale signal = `updatedAt`; first-run = no one-shot (normal threshold catches existing orphans).
 - **Approved correction (2026-08-02, option A):** reaped todos move directly live→archive. `saveStore(..., { intentionalDrop: "reap" })` retains rolling backup, drop snapshot, and audit while suppressing the expected drop's false wipe-alert sentinel. This correction governs over older Task 2 snippets that describe keeping cancelled todos live.
+- **Task 5 correction:** the Archive tab (not Done) surfaces the cumulative number of reaped runs because reaped records are archived `cancelled`; the audit helper sums `reaped=N` values rather than counting sweep lines. Config exposes both orphan and fleet-reap thresholds interactively.
 
 ## File Structure
 
@@ -29,8 +30,8 @@
 | `src/reap.ts` | `reapStaleActive(): ReapResult \| null` — batch scan, cancel, partition live→archive, save both + audit | **create** |
 | `src/health.ts` | Add `ORPHAN` to `HealthFlag` + `orphanCount` + raise flag in `healthReport` | modify |
 | `extensions/todo.ts` | Call `reapStaleActive()` after auto-prune; surface reap + orphan notify | modify |
-| `src/panel-data.ts` | `ORPHAN` row indicator (⌛) + `reapedCount` for Done tab | modify |
-| `src/panel.ts` | Render ⌛ on orphan rows + reapedCount in Done tab | modify |
+| `src/panel-data.ts` | `ORPHAN` ⌛ formatter input + cumulative `reaped=N` audit sum + config rows | modify |
+| `src/panel.ts` | Render ⌛ on orphan rows + reap count in Archive tab + threshold config handlers | modify |
 | `test/todo-reap.test.mts` | New suite — reap + flag + audit + reversibility + isolation | **create** |
 | `test/todo-config.test.mts` | `reap` defaults + merge + corrupt recovery | extend |
 | `test/todo-health.test.mts` | `ORPHAN` flag raised + transient (not persisted) | extend |

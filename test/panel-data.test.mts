@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 let passed = 0;
 let failed = 0;
 function ok(name: string, cond: boolean, extra = ""): void {
@@ -7,7 +11,7 @@ function eq<T>(name: string, got: T, want: T): void {
   ok(name, got === want, `(got ${JSON.stringify(got)} want ${JSON.stringify(want)})`);
 }
 
-const { todoToItem, archiveSummaryToItems, actionsForTodo, configToSettingItems } = await import("../src/panel-data.ts");
+const { todoToItem, archiveSummaryToItems, actionsForTodo, configToSettingItems, countReapedFromAudit } = await import("../src/panel-data.ts");
 import type { Todo } from "../src/todo-store.ts";
 
 const t: Todo = { id: "td-x1", title: "ship the thing", notes: "", project: "nuntius", tags: ["mcp"], priority: "critical", status: "open", source: "", createdAt: "2026-07-01T00:00:00Z", updatedAt: "2026-07-01T00:00:00Z", closedAt: null };
@@ -19,6 +23,9 @@ ok("item label has priority", item.label.includes("critical"));
 ok("item label has title", item.label.includes("ship the thing"));
 ok("item label has project", item.label.includes("nuntius"));
 ok("item label has no • when notes empty", !item.label.includes("•"));
+const orphanItem = todoToItem(t, true);
+ok("orphan item has ⌛ prefix", orphanItem.label.startsWith("⌛ "));
+ok("normal item has no ⌛ prefix", !item.label.includes("⌛"));
 
 // todoToItem: • when notes present; title shown, notes content not shown
 const withNotes: Todo = { ...t, id: "td-x2", title: "has detail", notes: "lots of context", status: "in_progress" };
@@ -58,6 +65,8 @@ const settings = configToSettingItems(DEFAULT_CONFIG);
 ok("settings has defaultAgeDays", settings.some((s) => s.id === "defaultAgeDays"));
 ok("settings has activeMaxOpen", settings.some((s) => s.id === "activeMaxOpen"));
 ok("settings has archiveOldDays", settings.some((s) => s.id === "archiveOldDays"));
+ok("settings has orphanFlagAfterDays", settings.some((s) => s.id === "orphanFlagAfterDays" && s.currentValue === "14"));
+ok("settings has armoryFleetReapAfterDays", settings.some((s) => s.id === "armoryFleetReapAfterDays" && s.currentValue === "2"));
 
 
 
@@ -117,6 +126,22 @@ ok("maxNotesBytes row present", row !== undefined);
 ok("maxNotesBytes row label", row?.label === "Notes max bytes");
 eq("maxNotesBytes row current value", row?.currentValue, "8192");
 ok("maxNotesBytes row has value options", Array.isArray(row?.values) && row!.values.length > 0);
+
+// v0.6.0: cumulative reaped count sums runs, not REAP marker lines.
+{
+  const dir = mkdtempSync(join(tmpdir(), "armory-panel-reap-"));
+  process.env.TODO_DIR = dir;
+  writeFileSync(join(dir, "todo-audit.log"), [
+    "REAP reaped=2 flagged=0 at 2026-08-02T00:00:00.000Z",
+    "2026-08-02T00:00:01.000Z save archive.json 0→2 +2",
+    "REAP reaped=3 flagged=1 at 2026-08-02T00:00:02.000Z",
+  ].join("\n") + "\n");
+  eq("reaped count sums reaped=N values", countReapedFromAudit(), 5);
+  rmSync(join(dir, "todo-audit.log"));
+  eq("reaped count is zero when audit log missing", countReapedFromAudit(), 0);
+  delete process.env.TODO_DIR;
+  rmSync(dir, { recursive: true, force: true });
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

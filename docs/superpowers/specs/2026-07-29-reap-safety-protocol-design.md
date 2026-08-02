@@ -94,11 +94,11 @@ coordinating with armory-todo's maintainers.
 | Config schema | `src/config.ts` | + `ReapConfig` interface + `DEFAULT_CONFIG.reap` + merge validation + corrupt recovery | extend |
 | Reap logic | `src/reap.ts` | New module — `reapStaleActive(): ReapResult \| null` (mirrors `auto-prune.ts` shape) | **new** |
 | Health flags | `src/health.ts` | + `ORPHAN` (flagged-not-reaped, real todos — advisory, transient) | extend |
-| Audit/notify | `extensions/todo.ts` | `REAPED` is an **audit-log marker** (not a `HealthFlag` — reaped todos become `cancelled` and leave the active box, so health never sees them). Surfaced via the reap notify line + a `reapedCount` in the Done tab. | extend |
+| Audit/notify | `extensions/todo.ts` | `REAPED` is an **audit-log marker** (not a `HealthFlag` — reaped todos become archived `cancelled` and leave the active box, so health never sees them). Surfaced via the reap notify line + a cumulative run count in the Archive tab. | extend |
 | Session_start wiring | `extensions/todo.ts` | Call `reapStaleActive()` after `autoPruneOnSessionStart()`; surface reap result in the existing notify block | extend |
 | Backup/audit | `src/backup.ts` | Reuse `snapshotOnDrop` + `appendAudit` (box `"todo"`, counts-only) — no new mechanism | reuse |
 | Store/archive | `src/todo-store.ts` + `src/archive.ts` | Reap batch-partitions matched todos from live into archive as `cancelled`; `saveStore(..., { intentionalDrop: "reap" })` keeps backup/drop-snapshot/audit while suppressing a false wipe alert | extend + reuse |
-| Panel | `src/panel-data.ts` / `panel.ts` | `ORPHAN` row indicator (⌛) + `reapedCount` in Done tab | extend |
+| Panel | `src/panel-data.ts` / `panel.ts` | `ORPHAN` row indicator (⌛), cumulative `reaped=N` sum in Archive tab, and interactive Config rows for orphan/reap thresholds | extend |
 | Tests | `test/todo-reap.test.mts` | **new suite** + extend `todo-config` + `todo-health` + `todo-auto-prune` | new + extend |
 
 ## 6. Config shape
@@ -160,7 +160,7 @@ defaults rewritten.
 | `test/todo-reap.test.mts` | **new** | reap fleet at 2d ✓; immediate live→archive move ✓; immediate `restoreTodo` reversibility ✓; flag non-policy at 14d (no mutate) ✓; audit line + `.bak-drop` ✓; no false `.wipe-alert` ✓; corrupt-store skip ✓; idempotency ✓; `updatedAt` stale signal ✓ |
 | `test/todo-config.test.mts` | extend | `reap` defaults + merge + corrupt recovery |
 | `test/todo-health.test.mts` | extend | `ORPHAN` flag raised (transient, not persisted); no regression on existing flags |
-| `test/todo-reap.test.mts` | (also) | audit line carries `REAPED` marker; Done-tab `reapedCount` increments |
+| `test/panel-data.test.mts` | extend | ⌛ formatter input; audit parser sums `reaped=N` values (not marker lines); orphan/reap Config rows |
 | `test/todo-auto-prune.test.mts` | extend | ordering: auto-prune then reap in the same `session_start` pass; both fire independently |
 
 All new suites use the existing `TODO_DIR=tmp` isolation pattern (the

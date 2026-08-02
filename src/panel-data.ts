@@ -2,8 +2,11 @@
 // panel.ts so they're unit-testable without a terminal — the panel component
 // itself is manual-gate only.
 
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { SelectItem, SettingItem } from "@earendil-works/pi-tui";
 import type { Todo } from "./todo-store.ts";
+import { getTodoDir } from "./paths.ts";
 import type { DoneItem } from "./archive.ts";
 import type { ArchiveSummary } from "./archive.ts";
 import type { TodoConfig } from "./config.ts";
@@ -12,13 +15,14 @@ import type { TodoConfig } from "./config.ts";
  *  title is already ≤120 chars (enforced at write time), so no truncation is
  *  needed. The • marker shows when notes is non-empty (signals "open the
  *  detail view / use `todo get` for context"). */
-export function todoToItem(t: Todo): SelectItem {
+export function todoToItem(t: Todo, orphan = false): SelectItem {
+  const warning = orphan ? "⌛ " : "";
   const pin = t.status === "in_progress" ? " ⏵" : "";
   const proj = t.project ? ` (${t.project})` : "";
   const dot = t.notes.trim() ? " •" : "";
   return {
     value: t.id,
-    label: `[${t.id}] (${t.priority})${pin}${proj}${dot} ${t.title}`,
+    label: `${warning}[${t.id}] (${t.priority})${pin}${proj}${dot} ${t.title}`,
   };
 }
 
@@ -56,6 +60,8 @@ export function configToSettingItems(cfg: TodoConfig): SettingItem[] {
     { id: "hardAgeDays", label: "Hard-prune age (days)", currentValue: String(cfg.prune.hardAgeDays), values: ["90", "180", "365"], description: "Archive items older than this → suggested for hard-prune." },
     { id: "activeMaxOpen", label: "Active max open", currentValue: String(cfg.health.activeMaxOpen), values: ["10", "15", "20", "25"], description: "Bloat flag when open+in_progress exceeds this." },
     { id: "activeStaleDays", label: "Active stale (days)", currentValue: String(cfg.health.activeStaleDays), values: ["14", "30", "60"], description: "Bloat flag when open todos untouched longer than this." },
+    { id: "orphanFlagAfterDays", label: "Orphan flag (days)", currentValue: String(cfg.reap.orphanFlagAfterDays), values: ["7", "14", "30", "60"], description: "Advisory ORPHAN flag for non-policy active todos; never auto-mutates." },
+    { id: "armoryFleetReapAfterDays", label: "Fleet reap (days)", currentValue: String(cfg.reap.policy["armory-fleet"]?.reapAfterDays ?? 2), values: ["1", "2", "3", "7"], description: "Stale armory-fleet runs → archived cancelled (immediately restorable)." },
     { id: "parkedMax", label: "Parked max", currentValue: String(cfg.health.parkedMax), values: ["5", "10", "15"], description: "Bloat flag when parked exceeds this." },
     { id: "parkedStaleDays", label: "Parked stale (days)", currentValue: String(cfg.health.parkedStaleDays), values: ["30", "60", "90"], description: "Bloat flag when parked longer than this." },
     { id: "archiveMax", label: "Archive max", currentValue: String(cfg.health.archiveMax), values: ["100", "200", "500"], description: "Bloat flag when archive exceeds this." },
@@ -110,4 +116,22 @@ export function actionsForProject(): { label: string; action: string }[] {
 /** The (no project) summary row — non-selectable (no submenu). */
 export function noProjectSummaryItem(o: ProjectsOverview): SelectItem {
   return { value: "__noproject__", label: `(no project): ${o.noProject.count} total · ${o.noProject.open} open` };
+}
+
+/** Sum the number of runs auto-reaped across REAP audit markers. Best-effort;
+ *  malformed/missing logs report zero and never break the panel. */
+export function countReapedFromAudit(): number {
+  try {
+    const path = join(getTodoDir(), "todo-audit.log");
+    if (!existsSync(path)) return 0;
+    let total = 0;
+    for (const line of readFileSync(path, "utf8").split("\n")) {
+      if (!line.startsWith("REAP ")) continue;
+      const match = line.match(/\breaped=(\d+)\b/);
+      if (match) total += Number(match[1]);
+    }
+    return total;
+  } catch {
+    return 0;
+  }
 }
