@@ -35,6 +35,7 @@ export function reapStaleActive(): ReapResult | null {
 
   const store = loadStore();
   const reaped: Todo[] = [];
+  const reapedStaleDays: number[] = [];   // stale-age (by updatedAt) at decision time, pre-mutation
   let flagged = 0;
 
   for (const todo of store.todos) {
@@ -47,6 +48,7 @@ export function reapStaleActive(): ReapResult | null {
       todo.closedAt = new Date().toISOString();
       todo.updatedAt = new Date().toISOString();
       reaped.push(todo);
+      reapedStaleDays.push(ageDays);
     } else if (!entry && ageDays >= orphanAfter) {
       flagged++;
     }
@@ -64,6 +66,6 @@ export function reapStaleActive(): ReapResult | null {
     );
   } catch { /* audit best-effort */ }
 
-  const oldestDays = Math.floor(Math.max(...reaped.map((t) => (now - Date.parse(t.createdAt)) / DAY)));
+  const oldestDays = reapedStaleDays.length ? Math.floor(Math.max(...reapedStaleDays)) : 0;
   return { reaped: reaped.length, flagged, ids: reaped.map((t) => t.id), oldestDays };
 }

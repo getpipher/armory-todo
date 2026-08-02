@@ -121,4 +121,18 @@ describe("reapStaleActive", () => {
     assert.equal(res.reaped, 1);
     assert.equal(getTodo(id).status, "cancelled");
   });
+
+  it("oldestDays reflects updatedAt stale-age (not createdAt), post-mutation-safe", () => {
+    const t = addTodo({ title: "fleet run", source: "armory-fleet" });
+    const s = loadStore();
+    const row = s.todos.find((x) => x.id === t.id)!;
+    const tenDaysAgo = new Date(Date.now() - 10 * DAY).toISOString();
+    const threeDaysAgo = new Date(Date.now() - 3 * DAY).toISOString();
+    row.createdAt = tenDaysAgo;
+    row.updatedAt = threeDaysAgo;
+    saveStore(s);
+    const res = reapStaleActive()!;
+    assert.equal(res.reaped, 1);
+    assert.equal(res.oldestDays, 3, `oldestDays should be updatedAt-age (3), got ${res.oldestDays}`);
+  });
 });
