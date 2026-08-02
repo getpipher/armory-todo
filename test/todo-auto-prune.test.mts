@@ -100,5 +100,35 @@ function seed(dir: string) {
   rmSync(dir, { recursive: true, force: true });
 }
 
+// Case 5 (v0.6.0): maintenance ordering regression — auto-prune first,
+// then reap stale policy-source actives in the same session-start sequence.
+{
+  const dir = seed(mkdtempSync(join(tmpdir(), "armory-ap-reap-")));
+  const { addTodo, completeTodo, loadStore, saveStore } = await import("../src/todo-store.ts");
+  const { loadArchive } = await import("../src/archive.ts");
+  const { reapStaleActive } = await import("../src/reap.ts");
+  const DAY = 86400_000;
+
+  const done = addTodo({ title: "old done", source: "" });
+  completeTodo(done.id);
+  const fleet = addTodo({ title: "stale fleet run", source: "armory-fleet" });
+  const store = loadStore();
+  const doneRow = store.todos.find((t) => t.id === done.id)!;
+  doneRow.closedAt = new Date(Date.now() - 8 * DAY).toISOString();
+  const fleetRow = store.todos.find((t) => t.id === fleet.id)!;
+  fleetRow.updatedAt = new Date(Date.now() - 3 * DAY).toISOString();
+  saveStore(store);
+
+  const ap = autoPruneOnSessionStart();
+  const rp = reapStaleActive();
+  eq("session maintenance auto-prunes first", ap?.moved, 1);
+  eq("session maintenance reaps second", rp?.reaped, 1);
+  ok("auto-pruned todo moved to archive", loadArchive().todos.some((t) => t.id === done.id));
+  eq("reaped fleet todo is cancelled", loadStore().todos.find((t) => t.id === fleet.id)?.status, "cancelled");
+
+  delete process.env.TODO_DIR;
+  rmSync(dir, { recursive: true, force: true });
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
