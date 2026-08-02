@@ -111,7 +111,9 @@ export default function (pi: ExtensionAPI) {
       try {
         const rp = reapStaleActive();
         if (rp) {
-          reapMsg = ` · ♻ reaped ${rp.reaped} stale ${rp.reaped === 1 ? "run" : "runs"} (oldest ${rp.oldestDays}d) — restore via \`todo restore <id>\``;
+          const shownIds = rp.ids.slice(0, 5).map((id) => `[${id}]`).join(" ");
+          const more = rp.ids.length > 5 ? ` +${rp.ids.length - 5} more` : "";
+          reapMsg = ` · ♻ reaped ${rp.reaped} stale ${rp.reaped === 1 ? "run" : "runs"} (oldest ${rp.oldestDays}d) · ${shownIds}${more} — restore via \`todo restore <id>\``;
         }
       } catch {
         // reap optional — never crash the session notify
@@ -127,7 +129,7 @@ export default function (pi: ExtensionAPI) {
             msg += `${autoMsg ? "\n" : " — "}` + `⚠ ${report.flags.length} bloat signal${report.flags.length === 1 ? "" : "s"} (run /todo health)`;
           }
           if (report.orphan.count > 0) {
-            msg += ` · ${report.orphan.count} orphaned (oldest ${report.orphan.oldestDays}d untouched, non-fleet — review in /todo)`;
+            msg += ` · ${report.orphan.count} orphaned (oldest ${report.orphan.oldestDays}d untouched, non-policy — review in /todo)`;
           }
         } catch {
           // health check optional

@@ -1,6 +1,6 @@
 // Auto-prune on session_start — the deterministic age-gated prune.
 // Run: node test/todo-auto-prune.test.mts
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -41,6 +41,7 @@ function seed(dir: string) {
   ok("ap: rich items present", res!.items.length === 2);
   ok("ap: stale done moved to archive", loadArchive().todos.some((t) => t.id === staleDone.id));
   ok("ap: stale cancelled moved to archive", loadArchive().todos.some((t) => t.id === staleCancelled.id));
+  ok("ap: intentional prune does not emit false wipe alert", !existsSync(join(dir, ".wipe-alert")));
   const live = loadStore();
   ok("ap: fresh done stays in live", live.todos.some((t) => t.id === freshDone.id));
   ok("ap: open untouched", live.todos.some((t) => t.id === open.id));

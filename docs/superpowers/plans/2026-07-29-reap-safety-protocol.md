@@ -779,7 +779,7 @@ git commit -m "feat: v0.6.0 panel ORPHAN and reap archive UX"
 - [ ] **Step 1: Run the full suite**
 
 Run: `npm test`
-Expected: 496/496 green across 15 configured suites.
+Expected: 497/497 green across 15 configured suites.
 
 - [ ] **Step 2: Syntax/release checks**
 

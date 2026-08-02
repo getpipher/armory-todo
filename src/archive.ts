@@ -137,7 +137,7 @@ export function pruneTodos(opts: PruneInput = {}): PruneResult {
 
   live.todos = kept;
   archive.todos.push(...moved);
-  saveStore(live);
+  saveStore(live, { intentionalDrop: "prune" });
   saveArchive(archive);
 
   const items: PruneItem[] = moved.map((t) => ({

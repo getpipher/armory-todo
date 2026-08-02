@@ -34,6 +34,7 @@ export type {
   Priority,
   Status,
   Store,
+  SaveStoreOptions,
 } from "./todo-store.ts";
 
 export { TodoError } from "./todo-store.ts";

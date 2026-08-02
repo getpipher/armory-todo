@@ -30,8 +30,8 @@ export interface HealthConfig {
 
 export interface NotifyConfig {
   /** Show the `armory-todo: N open TODOs` session-start count line.
-   *  Safety messages (wipe-recovery alert, auto-prune undo info) still surface
-   *  when this is false. Default true. */
+   *  Safety messages (wipe recovery, auto-prune, reap) still surface when this
+   *  is false. Default true. */
   sessionStartCount: boolean;
 }
 

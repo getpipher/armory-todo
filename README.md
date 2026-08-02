@@ -25,8 +25,9 @@
 
 The package `exports` entry (`./src/index.ts`) is the **stable public surface** —
 `addTodo`, `listTodos`, `updateTodo`, `getTodo`, `completeTodo`, `parkTodo`,
-`deleteTodo`, and the `Todo` / `AddInput` / `UpdateInput` / `ListFilter` /
-`Priority` / `Status` / `Store` types (plus `TodoError`). Other `src/*` paths
+`deleteTodo`, `loadStore`, `saveStore`, and the `Todo` / `AddInput` /
+`UpdateInput` / `ListFilter` / `Priority` / `Status` / `Store` /
+`SaveStoreOptions` types (plus `TodoError`). Other `src/*` paths
 are internal and may change without notice. Depend on `@getpipher/armory-todo`
 (the public entry), never deep-import `src/*`.
 
@@ -261,7 +262,7 @@ Full design + decisions:
 | `policy.armory-fleet.reapAfterDays` | `2` | Move stale fleet-tracked active todos directly to archive as cancelled. |
 | `policy.armory-fleet.reapTo` | `cancelled` | Fixed reversible terminal status; `done` is intentionally unsupported. |
 
-Run the store tests: `npm test` (496/496 across 15 suites).
+Run the store tests: `npm test` (497/497 across 15 suites).
 
 ## Known issues
 

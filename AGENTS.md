@@ -54,7 +54,7 @@ node test/todo-config.test.mts       # config defaults + corrupt recovery + heal
 node test/todo-migrate.test.mts     # v1→v2 file move + v2→v3 schema (26)
 node test/todo-health.test.mts      # bloat diagnostics + project/notes + transient ORPHAN flag (47)
 node test/todo-hard-prune.test.mts   # confirm-gated deletion (16)
-node test/todo-auto-prune.test.mts # session_start auto-prune → reap ordering (17)
+node test/todo-auto-prune.test.mts # session_start auto-prune → reap ordering + alert guard (18)
 node test/registry.test.mts        # projects.json registry: load/save/reconcile/setMaxOpen/rename (34)
 node test/projects.test.mts        # per-project scope overview (21)
 node test/panel-data.test.mts       # panel helpers + ORPHAN/reap config + audit sum (51)
@@ -62,7 +62,7 @@ node test/todo-caps.test.mts        # v0.5.0 caps enforcement: notes + project +
 node test/todo-backup.test.mts     # v0.5.1 write-audit + rolling .bak + drop-snapshot (38)
 node test/todo-reap.test.mts       # v0.6.0 source-aware immediate live→archive reap (11)
 node test/public-api.test.mts      # stable public export contract (2)
-# or run all: npm test (496/496 across 15 suites)
+# or run all: npm test (497/497 across 15 suites)
 ```
 
 ## Notes

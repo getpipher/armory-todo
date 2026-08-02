@@ -71,8 +71,11 @@ export function reapStaleActive(): ReapResult | null {
     if (!archivedIds.has(todo.id)) archive.todos.push(todo);
   }
   store.todos = kept;
-  saveStore(store, { intentionalDrop: "reap" }); // backups/snapshot/audit, no false wipe sentinel
+  // Persist archive first: an interrupted second write may temporarily duplicate
+  // an id across boxes, but the next idempotent reap removes the live copy. The
+  // inverse order could hide data from both primary stores until backup recovery.
   saveArchive(archive);
+  saveStore(store, { intentionalDrop: "reap" }); // backups/snapshot/audit, no false wipe sentinel
 
   // Append a reap-specific audit marker line (best-effort, no content)
   try {
