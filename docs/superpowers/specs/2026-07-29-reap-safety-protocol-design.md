@@ -49,10 +49,11 @@ coordinating with armory-todo's maintainers.
   (`armory-fleet`) without cross-package coordination.
 - **Never auto-mutate real work.** Todos with no `source` (agent-managed,
   real-work) are flagged-only — irreversible state changes stay human-driven.
-- **Reversibility.** Reaping is always to `cancelled` (never deleted) →
-  `todo restore <id>` reverses it. Same `.bak-drop-<ts>` snapshot + audit-log
-  guardrails as the v0.5.1 backup system — a bad threshold or runaway reap is
-  recoverable.
+- **Immediate reversibility.** Reaping sets status to `cancelled` and moves the
+  todo directly from the live store to the archive (never deleted) →
+  `todo restore <id>` works immediately. Same `.bak-drop-<ts>` snapshot +
+  audit-log guardrails as the v0.5.1 backup system — a bad threshold or runaway
+  reap is recoverable.
 - **Config-driven, YAGNI-respecting.** The reap-able source list lives in
   `todo.config.json`. Adding a new source later is a config edit, not a code
   change. Ship with `armory-fleet` only; expand when there's a real second
@@ -84,6 +85,7 @@ coordinating with armory-todo's maintainers.
 | Q7 | "Stale" signal | **`updatedAt`** — already on every todo, bumped on every `update`. No new `lastTouchedAt` field. |
 | Q8 | Reap timing | **`session_start`**, immediately after `autoPruneOnSessionStart()`. One self-healing pass per boot. |
 | Q9 | Audit/backup | Reuse v0.5.1 `snapshotOnDrop` + `appendAudit` — same guardrails, no new mechanism. |
+| Q10 | Reaped todo destination (implementation challenge, approved 2026-08-02) | **A — immediate archive.** A live `cancelled` todo is hidden from every panel tab and `restoreTodo` only accepts archived ids. Therefore reaping atomically partitions live→archive so `todo restore <id>` works immediately. Intentional count drops retain backup/drop-snapshot/audit but suppress the false wipe-alert sentinel. |
 
 ## 5. Architecture
 
@@ -95,7 +97,7 @@ coordinating with armory-todo's maintainers.
 | Audit/notify | `extensions/todo.ts` | `REAPED` is an **audit-log marker** (not a `HealthFlag` — reaped todos become `cancelled` and leave the active box, so health never sees them). Surfaced via the reap notify line + a `reapedCount` in the Done tab. | extend |
 | Session_start wiring | `extensions/todo.ts` | Call `reapStaleActive()` after `autoPruneOnSessionStart()`; surface reap result in the existing notify block | extend |
 | Backup/audit | `src/backup.ts` | Reuse `snapshotOnDrop` + `appendAudit` (box `"todo"`, counts-only) — no new mechanism | reuse |
-| Store | `src/todo-store.ts` | `cancel(id)` already exists — reap calls it; no new store op | reuse |
+| Store/archive | `src/todo-store.ts` + `src/archive.ts` | Reap batch-partitions matched todos from live into archive as `cancelled`; `saveStore(..., { intentionalDrop: "reap" })` keeps backup/drop-snapshot/audit while suppressing a false wipe alert | extend + reuse |
 | Panel | `src/panel-data.ts` / `panel.ts` | `ORPHAN` row indicator (⌛) + `reapedCount` in Done tab | extend |
 | Tests | `test/todo-reap.test.mts` | **new suite** + extend `todo-config` + `todo-health` + `todo-auto-prune` | new + extend |
 
@@ -126,7 +128,7 @@ defaults rewritten.
 |---|---|---|---|
 | 1 | `autoPruneOnSessionStart()` runs (existing) — moves done/cancelled >7d to archive | yes | yes (existing) |
 | 2 | **`reapStaleActive()` runs** — for each active todo: compute `staleDays = (now − updatedAt) / 86400000` | no (read) | — |
-| 3a | If `todo.source` ∈ `reap.policy` AND `staleDays ≥ reapAfterDays` → `cancel(id)`, count it | yes (→ `cancelled`) | **yes** — `.bak-drop-<ts>` snapshot + audit line `REAP src=<source> n=<K>` |
+| 3a | If `todo.source` ∈ `reap.policy` AND `staleDays ≥ reapAfterDays` → set `cancelled`, remove from live, append to archive, count it | yes (live → archive) | **yes** — live `.bak-drop-<ts>` snapshot + both-store audit + `REAP` marker; intentional drop suppresses false wipe sentinel |
 | 3b | Else if `staleDays ≥ orphanFlagAfterDays` → set transient `__orphanDays` (in-memory health pass, **not persisted**) → surfaces `ORPHAN` flag + panel ⌛ | no | flag only |
 | 4 | If any reaped → notify `♻ Reaped N stale <source> runs (oldest Kd) — restore via /todo` | — | — |
 | 5 | If any orphaned → existing "N open" notify appends `+ M orphaned (oldest Kd untouched)` | — | — |
@@ -135,7 +137,7 @@ defaults rewritten.
 - A todo with `source: undefined` (real agent work) is **never** auto-mutated by
   the reap sweep. It can only get the `ORPHAN` flag, which is advisory.
 - A todo with `source` not in `reap.policy` is also flag-only (same as no source).
-- Reap target is always `cancelled` — `restore` reverses it. Nothing is ever deleted.
+- Reap target is always archived `cancelled` — `restore` reverses it immediately. Nothing is ever deleted.
 - The orphan flag is **transient** — recomputed each session from `updatedAt`. It
   is not written to disk (avoids a schema bump + migration just for a display hint).
 
@@ -144,7 +146,7 @@ defaults rewritten.
 | Risk | Guard |
 |---|---|
 | Cancelling real work by mistake | Only `source` ∈ `reap.policy` ever auto-mutates; real todos are flag-only forever |
-| Reap is irreversible | `reapTo` is always `cancelled` (never deleted) → `todo restore <id>` reverses it |
+| Reap is irreversible | Reaped todos are immediately archived as `cancelled` (never deleted) → `todo restore <id>` reverses them immediately |
 | Bad threshold wipes a batch | `.bak-drop-<ts>` snapshot before the reap write (v0.5.1 pattern) + audit log line — same recovery path as the 2026-07-21 wipe incident |
 | Reap runs on a corrupt store | `loadConfig` already backs up corrupt config to `.bad-<ts>`; reap skips if store load throws |
 | Reap double-fires in one session | `session_start` is once-per-boot; idempotent anyway (already-cancelled todos aren't re-counted) |
@@ -155,7 +157,7 @@ defaults rewritten.
 
 | Suite | New/extend | Covers |
 |---|---|---|
-| `test/todo-reap.test.mts` | **new** | reap fleet at 2d ✓; flag non-fleet at 14d (no mutate) ✓; source-not-in-policy = flag-only ✓; `cancelled` reversibility ✓; audit line written ✓; `.bak-drop` created ✓; corrupt-config skip ✓; double-fire idempotent ✓; orphan flag is transient (not persisted) ✓; `updatedAt` is the stale signal ✓ |
+| `test/todo-reap.test.mts` | **new** | reap fleet at 2d ✓; immediate live→archive move ✓; immediate `restoreTodo` reversibility ✓; flag non-policy at 14d (no mutate) ✓; audit line + `.bak-drop` ✓; no false `.wipe-alert` ✓; corrupt-store skip ✓; idempotency ✓; `updatedAt` stale signal ✓ |
 | `test/todo-config.test.mts` | extend | `reap` defaults + merge + corrupt recovery |
 | `test/todo-health.test.mts` | extend | `ORPHAN` flag raised (transient, not persisted); no regression on existing flags |
 | `test/todo-reap.test.mts` | (also) | audit line carries `REAPED` marker; Done-tab `reapedCount` increments |

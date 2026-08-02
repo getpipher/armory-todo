@@ -1,10 +1,11 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { rmSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync } from "node:fs";
-import { addTodo, updateTodo, listTodos, getTodo, loadStore, saveStore, type Todo, type Store } from "../src/todo-store.ts";
-import { reapStaleActive, type ReapResult } from "../src/reap.ts";
+import { addTodo, updateTodo, getTodo, loadStore, saveStore } from "../src/todo-store.ts";
+import { loadArchive, restoreTodo } from "../src/archive.ts";
+import { reapStaleActive } from "../src/reap.ts";
 import { loadConfig, saveConfig } from "../src/config.ts";
-import { getLivePath, getConfigPath } from "../src/paths.ts";
+import { getLivePath } from "../src/paths.ts";
 
 const TMP = `${import.meta.dirname}/tmp-reap`;
 
@@ -43,13 +44,15 @@ function backdate(id: string, ageDays: number): void {
 }
 
 describe("reapStaleActive", () => {
-  it("cancels a fleet-source active todo older than 2d", () => {
+  it("cancels and immediately archives a fleet-source active todo older than 2d", () => {
     const id = staleTodo("armory-fleet", 3);
     const res = reapStaleActive()!;
     assert.equal(res.reaped, 1);
     assert.deepEqual(res.ids, [id]);
-    assert.equal(getTodo(id).status, "cancelled");
-    assert.ok(getTodo(id).closedAt);
+    assert.throws(() => getTodo(id), /no todo with id/);
+    const archived = loadArchive().todos.find((t) => t.id === id);
+    assert.equal(archived?.status, "cancelled");
+    assert.ok(archived?.closedAt);
   });
 
   it("does NOT cancel a fleet todo younger than 2d", () => {
@@ -72,21 +75,28 @@ describe("reapStaleActive", () => {
     assert.equal(res, null);
   });
 
-  it("is reversible — restore brings a reaped todo back as open", () => {
+  it("is immediately reversible via restoreTodo", () => {
     const id = staleTodo("armory-fleet", 3);
     reapStaleActive();
-    assert.equal(getTodo(id).status, "cancelled");
-    updateTodo(id, { status: "open" });
+    assert.equal(loadArchive().todos.find((t) => t.id === id)?.status, "cancelled");
+    const restored = restoreTodo(id);
+    assert.equal(restored.status, "open");
+    assert.equal(restored.closedAt, null);
     assert.equal(getTodo(id).status, "open");
+    assert.ok(!loadArchive().todos.some((t) => t.id === id));
   });
 
-  it("writes an audit-log REAP line on reap", () => {
+  it("writes both stores, a live drop snapshot, and an audit-log REAP line", () => {
     staleTodo("armory-fleet", 3);
     staleTodo("armory-fleet", 4);
     const res = reapStaleActive()!;
     assert.equal(res.reaped, 2);
+    assert.equal(loadStore().todos.length, 0);
+    assert.equal(loadArchive().todos.length, 2);
     const log = readFileSync(`${TMP}/todo-audit.log`, "utf8");
-    assert.ok(/REAP/.test(log));
+    assert.ok(/^REAP reaped=2 /m.test(log));
+    assert.ok(readdirSync(TMP).some((f) => f.startsWith("todo.json.bak-drop-")));
+    assert.equal(existsSync(`${TMP}/.wipe-alert`), false, "intentional reap must not emit a false wipe alert");
   });
 
   it("is idempotent — second call in same session reaps nothing", () => {
@@ -113,13 +123,14 @@ describe("reapStaleActive", () => {
     assert.equal(getTodo(id).status, "open");
   });
 
-  it("reaps in_progress todos too — in_progress is also active and reaped", () => {
+  it("reaps in_progress todos too — in_progress is also active and archived", () => {
     const id = staleTodo("armory-fleet", 3);
     updateTodo(id, { status: "in_progress" });
     backdate(id, 3);  // re-stale after updateTodo resets updatedAt
     const res = reapStaleActive()!;
     assert.equal(res.reaped, 1);
-    assert.equal(getTodo(id).status, "cancelled");
+    assert.throws(() => getTodo(id), /no todo with id/);
+    assert.equal(loadArchive().todos.find((t) => t.id === id)?.status, "cancelled");
   });
 
   it("oldestDays reflects updatedAt stale-age (not createdAt), post-mutation-safe", () => {

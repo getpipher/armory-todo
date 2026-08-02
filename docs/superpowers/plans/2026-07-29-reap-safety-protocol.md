@@ -4,7 +4,7 @@
 
 **Goal:** Add source-aware stale-active reaping to armory-todo so orphaned `armory-fleet` runs auto-`cancelled` at 2d while real work (`source: undefined`) is only flagged `ORPHAN` at 14d — never auto-mutated.
 
-**Architecture:** Pure-additive. One new config section (`reap`), one new module (`src/reap.ts`, mirrors `auto-prune.ts`), one new `HealthFlag` (`ORPHAN`), session_start wiring after the existing auto-prune call, panel ⌛ indicator. Reap reuses `deleteTodo`→`updateTodo(status:"cancelled")` semantics (reversible via `restore`) + the v0.5.1 `snapshotOnDrop`/`appendAudit` backup guardrails. Zero migration.
+**Architecture:** Pure-additive. One new config section (`reap`), one new module (`src/reap.ts`, mirrors `auto-prune.ts`), one new `HealthFlag` (`ORPHAN`), session_start wiring after the existing auto-prune call, panel ⌛ indicator. Reap batch-moves matched active todos directly from live to archive as `cancelled`, making `restoreTodo(id)` immediately valid, while reusing v0.5.1 backup/drop-snapshot/audit guardrails. Zero migration.
 
 **Tech Stack:** TypeScript (tsx runtime, no build), `node:test` via `tsx`, pi extension API. Existing deps only.
 
@@ -14,18 +14,19 @@
 
 - Test isolation: every test suite that writes MUST set `process.env.TODO_DIR = tmp` at the top, and re-establish it before any appended section (the v0.5.3 wiper lesson — `delete process.env.TODO_DIR` in cleanup leaks to the real store).
 - 2-space indent, no AI attribution in commits.
-- Reap target is always `cancelled` (never deleted) — reversibility via `todo restore <id>`.
+- Reap target is always immediately archived `cancelled` (never deleted) — reversibility via `todo restore <id>` works immediately.
 - Reap never mutates a todo whose `source` is not in `config.reap.policy`.
 - Reap runs on `session_start`, immediately after `autoPruneOnSessionStart()`, inside the existing try/catch so it can never crash the session notify.
 - ORPHAN flag is **transient** — derived from `updatedAt` in `healthReport()`, never persisted to the Todo record (no schema bump).
 - Defaults (locked in spec §4): fleet `reapAfterDays: 2`, `reapTo: "cancelled"`; non-fleet `orphanFlagAfterDays: 14`; reap-able list = `["armory-fleet"]`; stale signal = `updatedAt`; first-run = no one-shot (normal threshold catches existing orphans).
+- **Approved correction (2026-08-02, option A):** reaped todos move directly live→archive. `saveStore(..., { intentionalDrop: "reap" })` retains rolling backup, drop snapshot, and audit while suppressing the expected drop's false wipe-alert sentinel. This correction governs over older Task 2 snippets that describe keeping cancelled todos live.
 
 ## File Structure
 
 | File | Responsibility | Action |
 |---|---|---|
 | `src/config.ts` | Add `ReapConfig` + `DEFAULT_CONFIG.reap` + merge in `loadConfig` | modify |
-| `src/reap.ts` | `reapStaleActive(): ReapResult \| null` — batch load/scan/cancel/save + audit | **create** |
+| `src/reap.ts` | `reapStaleActive(): ReapResult \| null` — batch scan, cancel, partition live→archive, save both + audit | **create** |
 | `src/health.ts` | Add `ORPHAN` to `HealthFlag` + `orphanCount` + raise flag in `healthReport` | modify |
 | `extensions/todo.ts` | Call `reapStaleActive()` after auto-prune; surface reap + orphan notify | modify |
 | `src/panel-data.ts` | `ORPHAN` row indicator (⌛) + `reapedCount` for Done tab | modify |

@@ -106,7 +106,7 @@ export default function (pi: ExtensionAPI) {
         // auto-prune optional — don't crash the session notify
       }
       // v0.6.0: source-aware stale-active reap runs AFTER auto-prune. Reaped
-      // todos become cancelled (reversible via todo restore), never deleted.
+      // todos enter the archive as cancelled (immediately restorable), never deleted.
       let reapMsg = "";
       try {
         const rp = reapStaleActive();

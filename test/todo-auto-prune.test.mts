@@ -124,7 +124,8 @@ function seed(dir: string) {
   eq("session maintenance auto-prunes first", ap?.moved, 1);
   eq("session maintenance reaps second", rp?.reaped, 1);
   ok("auto-pruned todo moved to archive", loadArchive().todos.some((t) => t.id === done.id));
-  eq("reaped fleet todo is cancelled", loadStore().todos.find((t) => t.id === fleet.id)?.status, "cancelled");
+  eq("reaped fleet todo is cancelled in archive", loadArchive().todos.find((t) => t.id === fleet.id)?.status, "cancelled");
+  ok("reaped fleet todo left live store", !loadStore().todos.some((t) => t.id === fleet.id));
 
   delete process.env.TODO_DIR;
   rmSync(dir, { recursive: true, force: true });
