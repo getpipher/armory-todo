@@ -35,11 +35,27 @@ export interface NotifyConfig {
   sessionStartCount: boolean;
 }
 
+export interface ReapPolicyEntry {
+  /** Active todos from this source older than this (by updatedAt) are auto-`reapTo`'d. */
+  reapAfterDays: number;
+  /** Terminal status applied. v0.6.0 only supports "cancelled" (reversible via restore). */
+  reapTo: "cancelled";
+}
+
+export interface ReapConfig {
+  /** Active todos whose `source` is NOT in `reap.policy`, older than this (by
+   *  updatedAt) → ORPHAN flag (advisory, transient — no mutation). */
+  orphanFlagAfterDays: number;
+  /** Per-source reap policy. Sources not listed are flag-only (never auto-mutated). */
+  policy: Record<string, ReapPolicyEntry>;
+}
+
 export interface TodoConfig {
   version: 1;
   prune: PruneConfig;
   health: HealthConfig;
   notify: NotifyConfig;
+  reap: ReapConfig;
 }
 
 export const DEFAULT_CONFIG: TodoConfig = {
@@ -61,6 +77,12 @@ export const DEFAULT_CONFIG: TodoConfig = {
   },
   notify: {
     sessionStartCount: true,
+  },
+  reap: {
+    orphanFlagAfterDays: 14,
+    policy: {
+      "armory-fleet": { reapAfterDays: 2, reapTo: "cancelled" },
+    },
   },
 };
 
@@ -90,11 +112,22 @@ export function loadConfig(): TodoConfig {
     }
     const notify = { ...DEFAULT_CONFIG.notify, ...(parsed.notify ?? {}) };
     if (typeof notify.sessionStartCount !== "boolean") notify.sessionStartCount = true;
+    const reap = { ...DEFAULT_CONFIG.reap, ...(parsed.reap ?? {}) };
+    if (reap.orphanFlagAfterDays === undefined || typeof reap.orphanFlagAfterDays !== "number" || Number.isNaN(reap.orphanFlagAfterDays) || reap.orphanFlagAfterDays < 0) {
+      reap.orphanFlagAfterDays = DEFAULT_CONFIG.reap.orphanFlagAfterDays;
+    }
+    if (!reap.policy || typeof reap.policy !== "object") reap.policy = {};
+    for (const [src, entry] of Object.entries(reap.policy)) {
+      if (!entry || typeof entry.reapAfterDays !== "number" || entry.reapAfterDays < 0 || entry.reapTo !== "cancelled") {
+        delete reap.policy[src];
+      }
+    }
     return {
       version: 1,
       prune: { ...DEFAULT_CONFIG.prune, ...parsed.prune },
       health,
       notify,
+      reap,
     };
   } catch {
     try {

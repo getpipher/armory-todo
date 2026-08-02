@@ -116,6 +116,38 @@ writeFileSync(join(tmp, "todo.config.json"), JSON.stringify({
 }, null, 2));
 eq("non-boolean sessionStartCount -> default true", loadConfig().notify.sessionStartCount, true);
 
+// --- v0.6.0: ReapConfig schema + defaults + merge ---
+import { loadConfig as loadConfigFresh, saveConfig as saveConfigFresh, DEFAULT_CONFIG as DEFAULT_CONFIGFresh } from "../src/config.ts";
+
+const tmpReap = mkdtempSync(join(tmpdir(), "armory-reap-"));
+process.env.TODO_DIR = tmpReap;
+
+const reapCfg = loadConfigFresh();
+eq("reap.orphanFlagAfterDays default 14", reapCfg.reap.orphanFlagAfterDays, 14);
+eq("reap.policy armory-fleet reapAfterDays 2", reapCfg.reap.policy["armory-fleet"].reapAfterDays, 2);
+eq("reap.policy armory-fleet reapTo cancelled", reapCfg.reap.policy["armory-fleet"].reapTo, "cancelled");
+eq("reap.policy has exactly 1 source", Object.keys(reapCfg.reap.policy).length, 1);
+
+const noReap: any = JSON.parse(JSON.stringify(DEFAULT_CONFIGFresh));
+delete noReap.reap;
+saveConfigFresh(noReap);
+const mergedReap = loadConfigFresh();
+eq("merged reap.orphanFlagAfterDays 14", mergedReap.reap.orphanFlagAfterDays, 14);
+eq("merged reap.policy armory-fleet reapAfterDays 2", mergedReap.reap.policy["armory-fleet"].reapAfterDays, 2);
+
+writeFileSync(join(tmpReap, "todo.config.json"), JSON.stringify({
+  version: 1,
+  prune: { defaultAgeDays: 7, hardAgeDays: 180, statuses: ["done", "cancelled"] },
+  health: { activeMaxOpen: 15, activeStaleDays: 30, parkedMax: 10, parkedStaleDays: 60, archiveMax: 200, archiveOldDays: 180, perProjectDefaultMax: 8, maxNotesBytes: 8192 },
+  notify: { sessionStartCount: true },
+  reap: { orphanFlagAfterDays: "not-a-number" },
+}), "utf8");
+const recoveredReap = loadConfigFresh();
+eq("corrupt reap → default orphanFlagAfterDays 14", recoveredReap.reap.orphanFlagAfterDays, 14);
+
+rmSync(tmpReap, { recursive: true, force: true });
+
+delete process.env.TODO_DIR;
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
