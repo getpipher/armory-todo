@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <strong>lifecycle boxes</strong> · <strong>title + notes</strong> · <strong>auto-prune</strong> · <strong>interactive panel</strong> · <strong>health diagnostics</strong> · <strong>hard-prune gate</strong>
+  <strong>lifecycle boxes</strong> · <strong>title + notes</strong> · <strong>auto-prune</strong> · <strong>source-aware reap safety</strong> · <strong>interactive panel</strong> · <strong>health diagnostics</strong> · <strong>hard-prune gate</strong>
 </p>
 
 ---
@@ -77,6 +77,17 @@ reports what moved (`auto-pruned N stale done (>7d): …` + a `restore` hint);
 it's a transient message, not a prompt injection. Reversible via `restore <id>`.
 `prune --all` (move fresh done too) and `prune --hard` (irreversible) stay manual.
 
+**Source-aware stale-active reap (v0.6.0):** producers can leave tracked todos
+`open`/`in_progress` forever when a worker dies before reporting a terminal
+status. On `session_start`, armory-todo now self-heals configured producer
+sources: stale `armory-fleet` todos (default: untouched for 2d) become
+`cancelled` and move directly to the archive, where `restore <id>` works
+immediately. Real/manual todos are never auto-mutated; non-policy active todos
+untouched for 14d get an advisory `ORPHAN` health flag and ⌛ panel marker.
+Both thresholds are editable in the Config tab. Expected live→archive drops
+keep rolling backup, drop-snapshot, and audit protection without emitting a
+false wipe alert.
+
 The only irreversible action is `prune --hard` (hard-prune) — it requires an
 explicit `confirm: true` and is always user-confirmed. See **Self-awareness**
 below.
@@ -87,7 +98,7 @@ below.
 ~/.pi/agent/todo/
   todo.json              # active + parked
   todo-archive.json      # done + cancelled (sealed history)
-  todo.config.json       # prune ages + health thresholds
+  todo.config.json       # prune/health/reap thresholds + notify settings
 ```
 
 A v1 single-file store at `~/.pi/agent/todo.json` is migrated automatically on
@@ -206,9 +217,11 @@ Each TODO carries `id, title (≤120 chars), notes (any length), project, tags, 
 - **`todo` tool** — model CRUD + lifecycle (above).
 - **`/todo` command** — human triage (above).
 - **Auto-inject** — on every `before_agent_start`, a compact `## Open TODOs (N)` block (titles + ids, sorted by priority) is appended to the system prompt, so the agent starts every turn already aware of pending work. The block is **cap-aware** (v0.5.0): under `health.activeMaxOpen` (default 15) it lists the rows; **over** the cap it collapses to a lean summary (counts + over-budget projects + a `todo list` pointer) so the prompt stays bounded when the store bloats. Only `open` + `in_progress` are injected — `parked` and archived todos are excluded (the lifecycle-box boundary). Mutations refresh it on the next turn.
+- **Source-aware safety protocol** — on `session_start`, policy-source stale actives (default `armory-fleet` >2d) move live→archive as immediately-restorable `cancelled` records. Non-policy stale actives are flagged only; never mutated. The Archive tab reports the cumulative number of auto-reaped runs.
 - **Archive query** — `list` with `archived:true` is summary-first (counts by project + month) then filtered/paginated on demand, so a large archive never bloats a single query.
 
 Full design + decisions:
+- v0.6.0 (source-aware reap safety protocol): [`docs/superpowers/specs/2026-07-29-reap-safety-protocol-design.md`](docs/superpowers/specs/2026-07-29-reap-safety-protocol-design.md)
 - v0.4.0 (project-scope management): [`docs/superpowers/specs/2026-07-21-project-scope-management-design.md`](docs/superpowers/specs/2026-07-21-project-scope-management-design.md)
 - v0.3.1 (auto-prune + unified Done view): [`docs/superpowers/specs/2026-07-21-auto-prune-done-view-design.md`](docs/superpowers/specs/2026-07-21-auto-prune-done-view-design.md)
 - v0.3.0 (title + notes split): [`docs/superpowers/specs/2026-07-21-title-notes-split-design.md`](docs/superpowers/specs/2026-07-21-title-notes-split-design.md)
@@ -230,15 +243,25 @@ Full design + decisions:
   "health": { "activeMaxOpen": 15, "activeStaleDays": 30, "parkedMax": 10,
               "parkedStaleDays": 60, "archiveMax": 200, "archiveOldDays": 180,
               "perProjectDefaultMax": 8, "maxNotesBytes": 8192 },
-  "notify": { "sessionStartCount": true }
+  "notify": { "sessionStartCount": true },
+  "reap": {
+    "orphanFlagAfterDays": 14,
+    "policy": { "armory-fleet": { "reapAfterDays": 2, "reapTo": "cancelled" } }
+  }
 }
 ```
 
 | `notify.*` | default | purpose |
 |---|---|---|
-| `sessionStartCount` | `true` | Show the `armory-todo: N open TODOs` startup line. Set `false` to silence it — safety messages (wipe-recovery alert, auto-prune undo info) still surface. |
+| `sessionStartCount` | `true` | Show the `armory-todo: N open TODOs` startup line. Set `false` to silence it — safety messages (wipe recovery, auto-prune, reap) still surface. |
 
-Run the store tests: `npm test` (315/315 across 11 suites).
+| `reap.*` | default | purpose |
+|---|---:|---|
+| `orphanFlagAfterDays` | `14` | Advisory ORPHAN threshold for active todos whose source is not auto-reaped; never mutates them. |
+| `policy.armory-fleet.reapAfterDays` | `2` | Move stale fleet-tracked active todos directly to archive as cancelled. |
+| `policy.armory-fleet.reapTo` | `cancelled` | Fixed reversible terminal status; `done` is intentionally unsupported. |
+
+Run the store tests: `npm test` (496/496 across 15 suites).
 
 ## Known issues
 

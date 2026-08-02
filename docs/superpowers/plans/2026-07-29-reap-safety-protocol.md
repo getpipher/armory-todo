@@ -36,7 +36,7 @@
 | `test/todo-config.test.mts` | `reap` defaults + merge + corrupt recovery | extend |
 | `test/todo-health.test.mts` | `ORPHAN` flag raised + transient (not persisted) | extend |
 | `test/todo-auto-prune.test.mts` | Ordering: auto-prune then reap in one session_start | extend |
-| `package.json` | `0.5.3` → `0.6.0` | modify |
+| `package.json` | `0.5.5` → `0.6.0` | modify |
 | `AGENTS.md` | Structure table + Notes: reap module + suite | modify |
 
 ---
@@ -682,7 +682,7 @@ git commit -m "feat: v0.6.0 wire reap into session_start + orphan notify"
 
 ---
 
-### Task 5: Panel — `ORPHAN` ⌛ indicator + reapedCount in Done tab
+### Task 5: Panel — `ORPHAN` ⌛ indicator + cumulative reap count in Archive tab
 
 **Files:**
 - Modify: `src/panel-data.ts` (row shape + Done tab data)
@@ -691,7 +691,7 @@ git commit -m "feat: v0.6.0 wire reap into session_start + orphan notify"
 
 **Interfaces:**
 - Consumes: `healthReport().orphan` (Task 3), audit log `REAP` lines (best-effort count).
-- Produces: panel rows show ⌛ prefix for orphan ids; Done tab shows `reaped: N` line.
+- Produces: panel rows show ⌛ prefix for orphan ids; Archive tab shows cumulative `reaped: N`; Config exposes both thresholds.
 
 - [ ] **Step 1: Write the failing test** (append to `test/panel-data.test.mts`, re-establish `TODO_DIR`)
 
@@ -764,7 +764,7 @@ Expected: PASS.
 
 ```bash
 git add src/panel-data.ts src/panel.ts test/panel-data.test.mts
-git commit -m "feat: v0.6.0 panel ORPHAN indicator + reapedCount in Done tab"
+git commit -m "feat: v0.6.0 panel ORPHAN and reap archive UX"
 ```
 
 ---
@@ -772,23 +772,22 @@ git commit -m "feat: v0.6.0 panel ORPHAN indicator + reapedCount in Done tab"
 ### Task 6: Full regression + version bump + docs + publish
 
 **Files:**
-- Modify: `package.json` (`0.5.3` → `0.6.0`)
+- Modify: `package.json` (`0.5.5` actual baseline → `0.6.0`)
 - Modify: `AGENTS.md` (structure table + Notes section)
 - Modify: `README.md` (What it solves + Structure blocks)
 
 - [ ] **Step 1: Run the full suite**
 
 Run: `npm test`
-Expected: all green (444 prior + new reap/config/health/auto-prune/panel tests).
+Expected: 496/496 green across 15 configured suites.
 
-- [ ] **Step 2: Typecheck**
+- [ ] **Step 2: Syntax/release checks**
 
-Run: `pnpm typecheck`
-Expected: no errors.
+The repository intentionally has no tsconfig/typecheck script (documented in `release.yml`; raw TS runs natively on Node 24). Run `node --check` on changed extension/TUI modules and use the complete native Node test matrix as the release gate.
 
 - [ ] **Step 3: Bump version**
 
-In `package.json`, change `"version": "0.5.3"` → `"version": "0.6.0"`.
+In `package.json`, change `"version": "0.5.5"` → `"version": "0.6.0"`.
 
 - [ ] **Step 4: Update `AGENTS.md`**
 
@@ -830,7 +829,7 @@ Expected: `release.yml` run for the `v0.6.0` tag → green, `@getpipher/armory-t
 
 - [ ] **Step 8: Pin settings + verify install**
 
-In `~/.pi/agent/settings.json`, update the armory-todo package pin to `npm:@getpipher/armory-todo@0.6.0`. Reload pi. Open `/todo` → Done tab shows `reaped: N` once the first real reap fires. Run `todo health` → no `ORPHAN` on RECTOR's real todos (the 42 fleet orphans get cancelled on next session_start at the 2d threshold; RECTOR's sas-fix at 8d stays flagged-only but under 14d so no ORPHAN yet).
+In `~/.pi/agent/settings.json`, update the armory-todo package pin to `npm:@getpipher/armory-todo@0.6.0`. Reload pi. Open `/todo` → Active rows show ⌛ for advisory ORPHANs; Archive tab shows cumulative `reaped: N`; Config exposes both reap thresholds. Run `todo health` → no `ORPHAN` on RECTOR's real todos (the 42 fleet orphans get cancelled on next session_start at the 2d threshold; RECTOR's sas-fix at 8d stays flagged-only but under 14d so no ORPHAN yet).
 
 - [ ] **Step 9: Memory note**
 

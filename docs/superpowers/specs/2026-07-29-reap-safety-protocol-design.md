@@ -1,7 +1,7 @@
 # v0.6.0 — Source-aware stale-active reaping ("safety protocol")
 
 **Date:** 2026-07-29
-**Status:** Design (awaiting RECTOR spec review)
+**Status:** Approved + implemented (release verification pending)
 **Branch:** `feat/reap-safety-protocol` off `main`
 **Predecessor:** v0.5.3 (wiper fix + data-loss defense complete), PR #11, shipped 2026-07-21
 **Target ship:** v0.6.0, auto-published via `release.yml` on `v0.6.0` tag
@@ -169,17 +169,19 @@ appended section that writes).
 
 ## 10. Shipping
 
-- Version bump: `0.5.3` → `0.6.0` (`package.json`).
+- Version bump: `0.5.5` → `0.6.0` (`package.json`).
 - npm publish via CI on `v0.6.0` tag (`release.yml`).
 - `~/.pi/agent/settings.json` pin updated to `npm:@getpipher/armory-todo@0.6.0`.
 - GitHub Release v0.6.0 synced with npm.
 - AGENTS.md structure table + Notes section updated (new `reap` module + suite).
 - Memory: `~/.pi/agent/memory/-Users-rector-local-dev-getpipher-armory-todo/v0.6.0-shipped.md`.
 
-## 11. Open questions for RECTOR (spec review)
+## 11. Resolved review decisions
 
-1. **Notify copy** — accept the proposed strings (`♻ Reaped N…`, `+ M orphaned…`) or customize?
-2. **Panel ⌛ glyph** for `ORPHAN` — or pick a different indicator (e.g. `⚠`)?
-3. **First-run cleanup** — do you want a **one-shot reap** of the 42 existing
-   orphans on first boot after v0.6.0 install (config-gated, one-time), or let
-   the normal 2d threshold catch them naturally over the next session?
+| Decision | Resolution |
+|---|---|
+| Notify copy | Accepted with lifecycle-correct immediate-archive restore guidance. |
+| Panel marker | `⌛` for advisory ORPHAN rows. |
+| First-run cleanup | No one-shot path; normal 2d policy catches existing fleet orphans. |
+| Reaped destination | Option A (approved 2026-08-02): immediate archive as `cancelled`, so `restore` works immediately. |
+| Reap metric placement | Archive tab, because reaped records are archived cancelled (Done intentionally excludes cancelled). |
