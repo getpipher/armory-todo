@@ -118,6 +118,137 @@ export function noProjectSummaryItem(o: ProjectsOverview): SelectItem {
   return { value: "__noproject__", label: `(no project): ${o.noProject.count} total · ${o.noProject.open} open` };
 }
 
+// v0.8.0 — Triage tab helpers (PRD D5). Humans judge in the panel: rows come
+// pre-chipped (mechanical-safe debris defaults to close; everything else to
+// keep — zero false-closes), each row is overridable, and ONE batch approval
+// executes. These helpers are the headless half; panel.ts renders/drives them.
+
+import type { TriageDecision, CloseReason } from "./triage.ts";
+import { gatherCandidates } from "./triage.ts";
+
+export type TriageVerdict =
+  | "close-debris" | "close-duplicate" | "close-stale" | "close-shipped"
+  | "park" | "keep";
+
+export interface TriagePanelRow {
+  id: string;
+  title: string;
+  project: string;
+  categories: string;
+  ageDays: number;
+  mechanicalSafe: boolean;
+  verdict: TriageVerdict;
+  survivorId?: string;   // close-duplicate
+  evidence?: string;     // close-shipped (and free-text for other closes)
+}
+
+/** Conservative defaults (D2): only zero-risk mechanical debris pre-chips to
+ *  close; every other candidate starts at keep — closing is always an active
+ *  human choice in the panel. */
+export function defaultVerdictFor(mechanicalSafe: boolean): TriageVerdict {
+  return mechanicalSafe ? "close-debris" : "keep";
+}
+
+const VERDICT_CHIP: Record<TriageVerdict, string> = {
+  "close-debris": "CLOSE·debris",
+  "close-duplicate": "CLOSE·dup",
+  "close-stale": "CLOSE·stale",
+  "close-shipped": "CLOSE·shipped",
+  park: "PARK",
+  keep: "keep",
+};
+
+export function verdictChip(v: TriageVerdict): string {
+  return VERDICT_CHIP[v];
+}
+
+/** Panel rows for the Triage tab (gather + conservative default verdicts).
+ *  Pure read — nothing mutates until the batch approval in panel.ts. */
+export function triagePanelRows(scope?: string): TriagePanelRow[] {
+  return gatherCandidates(scope).candidates.map((c) => ({
+    id: c.todo.id,
+    title: c.todo.title,
+    project: c.todo.project,
+    categories: c.categories.join("+"),
+    ageDays: c.ageDays,
+    mechanicalSafe: c.mechanicalSafe,
+    verdict: defaultVerdictFor(c.mechanicalSafe),
+  }));
+}
+
+/** Row → SelectList item: "[id] (CHIP) (project · age · categories) title". */
+export function triageRowToItem(row: TriagePanelRow): SelectItem {
+  const proj = row.project || "no project";
+  const safe = row.mechanicalSafe ? " ⚡" : "";
+  return {
+    value: row.id,
+    label: `[${row.id}] (${VERDICT_CHIP[row.verdict]})${safe} ${proj} · ${row.ageDays}d · ${row.categories} — ${row.title}`,
+  };
+}
+
+/** Per-row actions in the Triage tab. Every close flavor is an explicit
+ *  choice; keep is the safe default. */
+export function actionsForTriageRow(): { label: string; action: string }[] {
+  return [
+    { label: "Verdict: CLOSE debris (fleet-run prompt)", action: "v:close-debris" },
+    { label: "Verdict: CLOSE duplicate (needs survivor id)", action: "v:close-duplicate" },
+    { label: "Verdict: CLOSE stale-unverified", action: "v:close-stale" },
+    { label: "Verdict: CLOSE verified-shipped (needs evidence)", action: "v:close-shipped" },
+    { label: "Verdict: PARK (real, low, no date)", action: "v:park" },
+    { label: "Verdict: KEEP (leave untouched)", action: "v:keep" },
+    { label: "View detail", action: "view" },
+  ];
+}
+
+export interface BatchPlan {
+  decisions: TriageDecision[];
+  close: number;
+  park: number;
+  keep: number;
+  errors: string[];   // blocking validation problems (close w/o reason, dup w/o survivor, shipped w/o evidence)
+}
+
+/** Build + validate the batch from the current rows. Mirrors the engine's
+ *  D2 validation so the panel can surface problems BEFORE executing. */
+export function planBatch(rows: TriagePanelRow[]): BatchPlan {
+  const decisions: import("./triage.ts").TriageDecision[] = [];
+  const errors: string[] = [];
+  let close = 0, park = 0, keep = 0;
+  for (const r of rows) {
+    if (r.verdict === "keep") { keep++; continue; }
+    if (r.verdict === "park") {
+      park++;
+      decisions.push({ id: r.id, verdict: "park" });
+      continue;
+    }
+    close++;
+    const reason = r.verdict === "close-debris" ? "debris"
+      : r.verdict === "close-duplicate" ? "duplicate"
+      : r.verdict === "close-stale" ? "stale-unverified"
+      : "verified-shipped";
+    if (reason === "duplicate" && !r.survivorId) {
+      errors.push(`[${r.id}] duplicate close needs a survivor id (action → set it)`);
+    }
+    if (reason === "verified-shipped" && !r.evidence) {
+      errors.push(`[${r.id}] verified-shipped close needs evidence (action → add it)`);
+    }
+    decisions.push({
+      id: r.id,
+      verdict: "close",
+      reason: reason as CloseReason,
+      evidence: r.evidence || (reason === "debris" ? "mechanical: fleet-run prompt debris (panel-batched)" : undefined),
+      confidence: r.mechanicalSafe && reason === "debris" ? "high" : "medium",
+      survivorId: r.survivorId,
+    });
+  }
+  return { decisions, close, park, keep, errors };
+}
+
+/** One-line batch summary for the arm/confirm bar. */
+export function batchSummary(plan: BatchPlan): string {
+  return `${plan.close} close / ${plan.park} park / ${plan.keep} keep`;
+}
+
 /** Sum the number of runs auto-reaped across REAP audit markers. Best-effort;
  *  malformed/missing logs report zero and never break the panel. */
 export function countReapedFromAudit(): number {
