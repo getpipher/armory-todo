@@ -40,12 +40,21 @@ import { hardPrune } from "../src/hard-prune";
 import { TodoPanel } from "../src/panel";
 import { autoPruneOnSessionStart } from "../src/auto-prune";
 import { reapStaleActive } from "../src/reap";
+import {
+  gatherCandidates,
+  executeTriage,
+  executeSafeClass,
+  renderProposalTable,
+  renderReport,
+  type TriageDecision,
+} from "../src/triage";
+import { buildTriagePrompt, TRIAGE_PROMPT_VERSION } from "../src/triage-prompt";
 import { loadConfig, type TodoConfig } from "../src/config";
 import { projectsOverview } from "../src/projects";
 import { renameProject } from "../src/registry";
 import { readAndClearWipeAlert } from "../src/backup";
 
-const ACTIONS = ["list", "add", "update", "get", "complete", "delete", "clear", "park", "prune", "restore", "health", "projects", "project_rename"] as const;
+const ACTIONS = ["list", "add", "update", "get", "complete", "delete", "clear", "park", "prune", "restore", "health", "projects", "project_rename", "triage"] as const;
 
 function fmt(t: ReturnType<typeof listTodos>[number]): string {
   const tag = t.project ? ` (${t.project})` : "";
@@ -187,6 +196,7 @@ export default function (pi: ExtensionAPI) {
       "Use todo (action:'prune', hard:true, confirm:true, box?, olderThan?) for PERMANENT deletion (the only irreversible action). ALWAYS run health first, show the user the report + the exact proposed command, and wait for an explicit yes before passing confirm:true. Never hard-prune without explicit user confirmation.",
       "Use todo (action:'projects') for a per-project scope overview (open/in_progress/parked/done counts + maxOpen + OVER/?typo markers). Run when the user asks 'which projects have open work' or to see backlog shape by project.",
       "Use todo (action:'project_rename', oldName, newName) to rename or merge a project (rewrites live + archive + registry). Use it to fix typo'd project strings (e.g. foo-bat → foo-bar). Rename onto an existing name merges (consolidates the old project into the new). Per-project maxOpen caps are ENFORCED (block-on-add); they also drive a PROJECT_OVER health flag when breached.",
+      "Use todo (action:'triage') for agent-validated pruning: phase 1 gathers candidates (stale 30d + orphans 14d + over-cap projects + agent-source debris) and returns them with the versioned rubric — NOTHING mutates. Validate each candidate with read-only probes (git log / gh / npm view), present the proposal table (verdict + evidence + confidence), get ONE batch approval from the user, then call phase 2: todo(action:'triage', approve:[{id, verdict:'close'|'park'|'keep', reason?, evidence?, confidence?, survivorId?}]). Closed items are archived (reversible) and filed as CLOSED issues in the private getpipher/todo-ledger. autoSafe:true (--yes) executes ONLY the mechanical safe class (fleet-run prompt debris) — never auto-close anything you could not verify (zero false-closes). Scope with scope:'<project>'.",
     ],
     parameters: Type.Object({
       action: StringEnum(ACTIONS),
@@ -218,6 +228,19 @@ export default function (pi: ExtensionAPI) {
       // project actions (v0.4.0)
       oldName: Type.Optional(Type.String({ description: "project_rename: current project name" })),
       newName: Type.Optional(Type.String({ description: "project_rename: new project name (merge if it already exists)" })),
+      // triage (PRD 2026-08-30) — two phases within one action:
+      //   phase 1 (no approve): gather candidates + return the versioned rubric. NOTHING mutates.
+      //   phase 2 (approve): execute exactly the approved decisions, then file closed items to the ledger.
+      scope: Type.Optional(Type.String({ description: "triage: restrict candidates to one project name (empty = all)" })),
+      autoSafe: Type.Optional(Type.Boolean({ description: "triage (--yes): auto-execute ONLY the mechanical safe class (fleet-run prompt debris). Everything else stays a proposal — never auto-closed (D2)." })),
+      approve: Type.Optional(Type.Array(Type.Object({
+        id: Type.String({ description: "Candidate todo id (td-…)" }),
+        verdict: StringEnum(["close", "park", "keep"] as const),
+        reason: Type.Optional(Type.String({ description: "close only: debris | duplicate | stale-unverified | verified-shipped" })),
+        evidence: Type.Optional(Type.String({ description: "One CHECKED line (git/gh/npm probe result). Required for verified-shipped closes." })),
+        confidence: Type.Optional(StringEnum(["high", "medium", "low"] as const)),
+        survivorId: Type.Optional(Type.String({ description: "duplicate closes: the surviving todo id" })),
+      }), { description: "triage phase 2: the user-approved decisions. Executes exactly these; nothing else." })),
     }),
     async execute(_toolCallId, params) {
       try {
@@ -391,6 +414,44 @@ export default function (pi: ExtensionAPI) {
             const r = renameProject(params.oldName, params.newName);
             return { content: [{ type: "text" as const, text: `Renamed ${params.oldName} → ${r.newName}: ${r.liveRenamed} live + ${r.archivedRenamed} archived${r.merged ? " (merged)" : ""}` }] };
           }
+          case "triage": {
+            // Phase 2: execute exactly the user-approved decisions (D2 gate).
+            if (params.approve?.length) {
+              const before = gatherCandidates(params.scope).before;
+              const report = await executeTriage(params.approve as TriageDecision[]);
+              return { content: [{ type: "text" as const, text: renderReport(report, before) }] };
+            }
+            // Phase 1: gather + propose. NOTHING mutates unless autoSafe (--yes),
+            // which executes ONLY the mechanical safe class (fleet-run debris).
+            let safeMsg = "";
+            if (params.autoSafe) {
+              const { report, remaining } = await executeSafeClass(params.scope);
+              safeMsg = report
+                ? `--yes executed the safe class ONLY (fleet-run debris). Everything else needs the batch approval.\n\n${renderReport(report)}\n`
+                : "--yes: no mechanical-safe debris found — nothing auto-closed.\n";
+              if (report && remaining === 0) {
+                return { content: [{ type: "text" as const, text: safeMsg + "No remaining candidates — triage complete." }] };
+              }
+            }
+            const g = gatherCandidates(params.scope);
+            if (g.candidates.length === 0) {
+              return { content: [{ type: "text" as const, text: `${safeMsg}${safeMsg ? "\n" : ""}Triage: no candidates (before: ${g.before.active} active / ${g.before.parked} parked / ${g.before.archive} archive${g.scope ? `, scope: ${g.scope}` : ""}). Nothing to propose, nothing mutated.` }] };
+            }
+            const lines = [
+              `## Triage — proposal (NOTHING mutated yet)`,
+              `before: ${g.before.active} active / ${g.before.parked} parked / ${g.before.archive} archive${g.scope ? ` · scope: ${g.scope}` : ""} · candidates: ${g.candidates.length} · rubric ${TRIAGE_PROMPT_VERSION}`,
+              "",
+              renderProposalTable(g),
+              "",
+              safeMsg,
+              `Validate each candidate against the rubric below (read-only probes: git log, gh, npm view — checked, not guessed). Then present the proposal table (verdict + evidence + confidence) to the user and get ONE batch approval. On approval execute all decisions in a single call:`,
+              `  todo(action:"triage", approve:[{ id, verdict:"close"|"park"|"keep", reason?, evidence?, confidence?, survivorId? }, ...])`,
+              `Safety: close needs reason (debris|duplicate|stale-unverified|verified-shipped); duplicate needs survivorId; verified-shipped needs evidence. Items you cannot verify stay proposals — zero false-closes is the metric. The safe-class column marks what --yes may close WITHOUT approval.`,
+              "",
+              buildTriagePrompt(g.candidates, g.scope),
+            ];
+            return { content: [{ type: "text" as const, text: lines.filter((l) => l !== "").join("\n") }] };
+          }
           default:
             return { content: [{ type: "text" as const, text: `Unknown action: ${params.action}` }] };
         }
@@ -406,7 +467,7 @@ export default function (pi: ExtensionAPI) {
       "Global cross-session TODO list. " +
       "/todo / /todo all / /todo add <title> / /todo done <id> / /todo rm <id> / " +
       "/todo park <id> / /todo restore <id> / /todo prune [--all|--hard --box <b> --older-than <d>] / " +
-      "/todo archive [project:X|text:Y] / /todo finished / /todo projects / /todo health / /todo clean / /todo path",
+      "/todo archive [project:X|text:Y] / /todo finished / /todo projects / /todo health / /todo triage [scope] [--yes] / /todo clean / /todo path",
     handler: async (args, ctx) => {
       const a = (args ?? "").trim();
       const [sub, ...rest] = a.split(/\s+/);
@@ -481,6 +542,33 @@ export default function (pi: ExtensionAPI) {
               : `Pruned ${res.moved} to archive:\n${res.items.map((i) => `  [${i.id}] ${i.title} (${i.ageDays}d)`).join("\n")}\nUndo: todo restore <id>`;
             ctx.ui.notify(msg, "info");
           }
+          return;
+        }
+        if (sub === "triage") {
+          // Thin mirror of todo(action:'triage') — humans get the proposal table;
+          // the validation loop runs through the agent (rubric ships in-package).
+          const yes = rest.includes("--yes");
+          const scopeArg = rest.find((r) => !r.startsWith("--"));
+          let safeMsg = "";
+          if (yes) {
+            const { report, remaining } = await executeSafeClass(scopeArg);
+            safeMsg = report ? renderReport(report) + `\nremaining candidates: ${remaining}\n` : "--yes: no mechanical-safe debris — nothing auto-closed.\n";
+          }
+          const g = gatherCandidates(scopeArg);
+          const head = `Triage (before: ${g.before.active} active / ${g.before.parked} parked / ${g.before.archive} archive${scopeArg ? `, scope: ${scopeArg}` : ""})`;
+          if (g.candidates.length === 0) {
+            if (ctx.hasUI) ctx.ui.notify(`${head}\n${safeMsg || "No candidates — nothing to propose, nothing mutated."}`, "info");
+            return;
+          }
+          const msg = [
+            head,
+            safeMsg,
+            `candidates (${g.candidates.length}) — NOTHING mutated${yes ? " beyond the safe class above" : ""}:`,
+            renderProposalTable(g),
+            "",
+            `Ask the agent to validate these against the triage rubric (${TRIAGE_PROMPT_VERSION}) using read-only probes, then approve the batch. The agent executes via todo(action:"triage", approve:[…]); closed items are filed to ${"getpipher/todo-ledger"} (private).`,
+          ].filter((l) => l !== "").join("\n");
+          if (ctx.hasUI) ctx.ui.notify(msg, "info");
           return;
         }
         if (sub === "health") {
