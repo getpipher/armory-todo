@@ -148,6 +148,47 @@ Three caps keep the store (and its auto-injected prompt block) from bloating sil
 
 **Backwards-compat:** zero migration (store v3, config v1, registry v1 unchanged in shape). Oversize notes grandfathered. The `maxOpen` advisory→enforced graduation is a documented behavior change for any v0.4.0 user who set a slot (the block message tells them how to raise/clear).
 
+## Agent-validated triage (`/todo triage`)
+
+Rules alone can't clean a store that accretes agent-run debris, stale backlog,
+and prune hesitation. Triage adds judgment: one command that gathers
+candidates, has the agent validate each against a versioned rubric, and closes
+nothing without an explicit batch approval.
+
+```
+/todo triage [scope] [--yes]
+  1. GATHER   stale(30d) + orphans(14d) + over-cap projects + agent-source items
+  2. VALIDATE agent checks each candidate (read-only git/gh/npm probes — rubric ships in-package: src/triage-prompt.ts)
+  3. PROPOSE  table: verdict + evidence + confidence
+  4. APPROVE  one batch confirm — nothing mutates before it (the load-bearing gate)
+  5. EXECUTE  close(cancel) / park / keep → one prune --all sweep (reversible)
+  6. FILE     each closed item as a CLOSED issue in the private getpipher/todo-ledger
+  7. REPORT   before/after counts, filed links, anything deferred
+```
+
+Safety rails (the point of the feature):
+
+- **No silent close, ever.** The agent classifies; only the user's batch
+  approval mutates. `--yes` (`autoSafe:true`) executes ONLY the mechanical safe
+  class — fleet-run prompt debris (prompt-shaped title + agent context) — and
+  still reports what it closed. Unverifiable items stay proposals; zero
+  false-closes is the success metric.
+- **The ledger never blocks.** Issues are matched by client-side title search
+  (idempotent — GitHub's search index lags fresh issues), created then PATCHed
+  closed, labeled `todo-archive` + `project/<name>` + `verdict/cancel`, and
+  embed the full original note. gh down → items archive locally anyway and the
+  skip is reported; `TODO_TRIAGE_SKIP_FILING=1` forces that path (air-gapped
+  runs). `TODO_LEDGER_REPO` overrides the repo for scratch runs.
+- **The rubric is versioned** (`triage-rubric/v1`) and ships in the package —
+  judgment quality evolves deliberately, not per-session.
+- Composes with the existing machinery: thresholds come from
+  `health.activeStaleDays` / `reap.orphanFlagAfterDays`, over-cap from the
+  registry, and reap-policy sources stay owned by the v0.6.0 auto-reap.
+
+A Triage tab in the interactive panel is planned for v2; today the loop runs
+through the agent (the tool returns the candidates + rubric, the agent
+validates and proposes, you approve, one `approve:[…]` call executes + files).
+
 ## Interactive panel (SPEC-3)
 
 Run `/todo` (no arg) in a TUI session to open the interactive triage panel:
@@ -189,6 +230,7 @@ Typed subcommands (`/todo park <id>`, `/todo prune`, etc.) all still work alongs
 /todo prune --hard        permanent deletion (interactive confirm prompt)
 /todo archive [filter]   archive summary, or filtered slice (project:X / text:Y)
 /todo health              bloat report across all boxes + flags + suggestions
+/todo triage [scope] [--yes]  agent-validated prune: gather → validate → propose → approve → close/park → file to ledger
 /todo clean              clear all done (deprecated — use prune)
 /todo path               show the store file path
 ```
@@ -208,6 +250,7 @@ Typed subcommands (`/todo park <id>`, `/todo prune`, etc.) all still work alongs
 | `restore` | `id` | bring an archived TODO back as open |
 | `health` | (none) | bloat report across active/parked/archive + flags + suggestions |
 | `prune` (hard) | `hard:true`, `confirm:true`, `box?`, `olderThan?`, `project?`, `tag?` | PERMANENT deletion — the only irreversible action |
+| `triage` | `scope?`, `autoSafe?`, `approve?: [{id, verdict, reason?, evidence?, confidence?, survivorId?}]` | two-phase agent-validated prune: bare call gathers candidates + returns the versioned rubric (nothing mutates); `autoSafe` executes ONLY mechanical debris; `approve` executes the user-approved batch, sweeps the archive, and files closed items to the private ledger
 | `clear` | `status?` (default `done`) | bulk-clear a status (deprecated — use prune) |
 
 Each TODO carries `id, title (≤120 chars), notes (any length), project, tags, priority (low|med|high|critical), status (open|in_progress|parked|done|cancelled), source, createdAt, updatedAt, closedAt`. The auto-injected block + list/panel show `title` only; `notes` is read via `get` and never injected.
