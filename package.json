@@ -1,6 +1,6 @@
 {
   "name": "@getpipher/armory-todo",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Global, cross-session TODO for pi \u2014 persists across all sessions and is auto-injected into every prompt. The disk-backed counterpart to branch-scoped pi todo extensions.",
   "keywords": [
     "pi-package",
