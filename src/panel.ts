@@ -26,10 +26,11 @@ import { loadConfig, saveConfig, type TodoConfig } from "./config.ts";
 import { healthReport } from "./health.ts";
 import { projectsOverview } from "./projects.ts";
 import { renameProject, setProjectMaxOpen, loadRegistry, saveRegistry } from "./registry.ts";
-import { todoToItem, archiveSummaryToItems, actionsForTodo, configToSettingItems, todoDoneItem, actionsForDoneTodo, projectOverviewToItems, actionsForProject, noProjectSummaryItem, countReapedFromAudit } from "./panel-data.ts";
+import { executeTriage, type TriageReport } from "./triage.ts";
+import { todoToItem, archiveSummaryToItems, actionsForTodo, configToSettingItems, todoDoneItem, actionsForDoneTodo, projectOverviewToItems, actionsForProject, noProjectSummaryItem, countReapedFromAudit, triagePanelRows, triageRowToItem, actionsForTriageRow, planBatch, batchSummary, type TriagePanelRow, type TriageVerdict } from "./panel-data.ts";
 
-export type Box = "active" | "parked" | "done" | "archive" | "projects" | "config";
-const BOXES: Box[] = ["active", "parked", "done", "archive", "projects", "config"];
+export type Box = "active" | "parked" | "done" | "archive" | "projects" | "triage" | "config";
+const BOXES: Box[] = ["active", "parked", "done", "archive", "projects", "triage", "config"];
 
 export interface TodoPanelOpts {
   theme: Theme;
@@ -58,6 +59,14 @@ export class TodoPanel extends Container {
   private projectFilterName = "";      // set by the "Filter active to project" action
   private projectEditKind: "rename" | "setmax" | null = null;
   private projectEditName = "";       // which project is being edited
+  // Triage tab (v0.8.0, PRD D5): rows carry a per-row verdict chip; `A` arms
+  // the batch (press again to execute — the in-panel D2 gate), esc disarms.
+  private triageRows: TriagePanelRow[] = [];
+  private triageLoaded = false;
+  private triageArm = false;
+  private triageExecuting = false;
+  private triageEditKind: "survivor" | "evidence" | null = null;
+  private triageEditId = "";
 
   constructor(opts: TodoPanelOpts) {
     super();
@@ -101,6 +110,9 @@ export class TodoPanel extends Container {
       this.addChild(new Text(this.theme.fg("warning", `  ⚠ ${this.healthFlags.length} bloat signals — see Config tab`), 0, 0));
     }
     this.addChild(new Spacer(1));
+    if (this.currentBox === "triage" && !this.editMode && !this.detailMode && !this.actionMode) {
+      this.addChild(new Text(this.theme.fg("muted", "  ⚡ = --yes-safe (mechanical debris) · verdicts pre-chipped conservative; override per row"), 0, 0));
+    }
     this.addChild(new Text(this.theme.fg("muted", "  filter:"), 0, 0));
     this.addChild(this.filterInput);
     this.addChild(new Spacer(1));
@@ -108,6 +120,8 @@ export class TodoPanel extends Container {
     if (this.editMode && this.editInput) {
       const prompt = this.projectEditKind === "rename" ? `  Rename project '${this.projectEditName}' to:`
         : this.projectEditKind === "setmax" ? `  Set maxOpen for '${this.projectEditName}' (number or 'clear'):`
+        : this.triageEditKind === "survivor" ? `  Survivor id for duplicate close of [${this.triageEditId}] (td-…):`
+        : this.triageEditKind === "evidence" ? `  Evidence for verified-shipped close of [${this.triageEditId}] (one checked line):`
         : `  Edit [${this.editId}]:`;
       this.addChild(new Text(this.theme.fg("accent", prompt), 0, 0));
       this.addChild(this.editInput);
@@ -137,11 +151,22 @@ export class TodoPanel extends Container {
         this.addChild(new Text(this.theme.fg("muted", `  reaped: ${reaped} runs auto-cancelled · restore with todo restore <id>`), 0, 0));
         this.addChild(new Spacer(1));
       }
+      if (this.currentBox === "triage" && this.triageArm) {
+        const plan = planBatch(this.triageRows);
+        const line = plan.errors.length > 0
+          ? this.theme.fg("warning", `  ⚠ batch has problems: ${plan.errors[0]}${plan.errors.length > 1 ? ` (+${plan.errors.length - 1} more)` : ""}`)
+          : this.theme.fg("warning", `  ARMED — execute ${batchSummary(plan)}? press A again to run · esc to disarm`);
+        this.addChild(new Text(line, 0, 0));
+        this.addChild(new Spacer(1));
+      }
       this.addChild(this.selectList);
     }
 
     this.addChild(new Spacer(1));
-    this.addChild(new Text(this.theme.fg("dim", "  ↑↓ navigate • enter select/action • tab switch box • esc done"), 0, 0));
+    const footer = this.currentBox === "triage"
+      ? "  ↑↓ navigate • enter action/verdict • A approve batch (twice) • tab switch box • esc done"
+      : "  ↑↓ navigate • enter select/action • tab switch box • esc done";
+    this.addChild(new Text(this.theme.fg("dim", footer), 0, 0));
     this.addChild(new Spacer(1));
     this.addChild(new DynamicBorder(accent));
     this.invalidate();
@@ -178,6 +203,28 @@ export class TodoPanel extends Container {
       const overview = projectsOverview();
       const rows = projectOverviewToItems(overview);
       this.setSelectItems([noProjectSummaryItem(overview), ...rows]);
+    } else if (this.currentBox === "triage") {
+      if (!this.triageLoaded) this.reloadTriageRows();
+      const q = filter.toLowerCase();
+      const rows = q
+        ? this.triageRows.filter((r) => r.title.toLowerCase().includes(q) || r.project.toLowerCase().includes(q))
+        : this.triageRows;
+      if (rows.length === 0) {
+        this.setSelectItems([{ value: "__notriage__", label: this.triageRows.length === 0 ? "No triage candidates — the store is clean 🎉" : "(no rows match the filter)" }]);
+      } else {
+        this.setSelectItems(rows.map(triageRowToItem));
+      }
+    }
+  }
+
+  /** (Re)gather candidates. Called on first tab entry, on re-entry after a
+   *  switch, and after a batch executes — the store may have changed. Pure read. */
+  private reloadTriageRows(): void {
+    try {
+      this.triageRows = triagePanelRows();
+      this.triageLoaded = true;
+    } catch (err) {
+      this.onNotify(`triage gather failed: ${(err as Error).message}`, "error");
     }
   }
 
@@ -218,7 +265,129 @@ export class TodoPanel extends Container {
       this.openProjectSubmenu(item.value);
       return;
     }
+    if (this.currentBox === "triage") {
+      if (item.value === "__notriage__") return;    // placeholder — no submenu
+      this.openTriageSubmenu(item.value);
+      return;
+    }
     this.openActionSubmenu(item.value);
+  }
+
+  private openTriageSubmenu(id: string): void {
+    const row = this.triageRows.find((r) => r.id === id);
+    if (!row) { this.onNotify("Candidate not found — re-gathering.", "info"); this.reloadTriageRows(); this.refreshList(); this.renderShell(); return; }
+    const items: SelectItem[] = actionsForTriageRow().map((a) => ({ value: a.action, label: a.label }));
+    this.actionList = new SelectList(items, 8, {
+      selectedPrefix: (s) => this.theme.fg("accent", s),
+      selectedText: (s) => this.theme.fg("accent", s),
+      description: (s) => this.theme.fg("muted", s),
+      scrollInfo: (s) => this.theme.fg("dim", s),
+      noMatch: (s) => this.theme.fg("warning", s),
+    });
+    this.actionList.onSelect = (a) => this.executeTriageRowAction(id, a.value);
+    this.actionList.onCancel = () => { this.actionMode = false; this.actionList = null; this.renderShell(); };
+    this.actionMode = true;
+    this.renderShell();
+  }
+
+  private executeTriageRowAction(id: string, action: string): void {
+    const row = this.triageRows.find((r) => r.id === id);
+    this.actionMode = false;
+    this.actionList = null;
+    if (!row) { this.renderShell(); return; }
+    if (action === "view") {
+      this.viewDetail(id);
+      return;
+    }
+    if (action.startsWith("v:")) {
+      const verdict = action.slice(2) as TriageVerdict;
+      row.verdict = verdict;
+      this.triageArm = false; // batch changed — re-arm deliberately
+      if (verdict === "close-duplicate") {
+        this.beginTriageEdit(id, "survivor");
+        return;
+      }
+      if (verdict === "close-shipped") {
+        this.beginTriageEdit(id, "evidence");
+        return;
+      }
+      this.onNotify(`[${id}] verdict → ${verdict}`);
+    }
+    this.refreshList();
+    this.renderShell();
+  }
+
+  /** Inline single-line input for duplicate-survivor ids and shipped evidence
+   *  (reuses the editMode Input; pi-tui cannot nest editors inside the panel). */
+  private beginTriageEdit(id: string, kind: "survivor" | "evidence"): void {
+    this.triageEditKind = kind;
+    this.triageEditId = id;
+    this.editId = id;
+    this.editInput = new Input();
+    this.editInput.setValue("");
+    this.editInput.onSubmit = (value) => {
+      const row = this.triageRows.find((r) => r.id === id);
+      const v = value.trim();
+      if (row) {
+        if (kind === "survivor") {
+          if (v) { row.survivorId = v; this.onNotify(`[${id}] duplicate of ${v}`); }
+        } else {
+          if (v) { row.evidence = v; this.onNotify(`[${id}] evidence recorded`); }
+        }
+      }
+      this.triageEditKind = null;
+      this.triageEditId = "";
+      this.exitEditMode();
+    };
+    this.editInput.onEscape = () => {
+      this.triageEditKind = null;
+      this.triageEditId = "";
+      this.exitEditMode();
+    };
+    this.editMode = true;
+    this.renderShell();
+  }
+
+  /** The in-panel D2 gate: first `A` arms (shows the batch summary), second
+   *  `A` executes. Nothing runs until that second explicit press. */
+  private approveTriageBatch(): void {
+    if (this.triageExecuting) return;
+    const plan = planBatch(this.triageRows);
+    if (!this.triageArm) {
+      if (plan.close + plan.park === 0) {
+        this.onNotify("Nothing to execute — every row is still 'keep'.");
+        return;
+      }
+      this.triageArm = true;
+      this.renderShell();
+      return;
+    }
+    if (plan.errors.length > 0) {
+      this.onNotify(`Batch incomplete: ${plan.errors[0]}`, "warning");
+      return; // stay armed — fix rows, press A again
+    }
+    this.triageExecuting = true;
+    this.triageArm = false;
+    this.renderShell();
+    executeTriage(plan.decisions)
+      .then((report: TriageReport) => {
+        this.triageExecuting = false;
+        this.reloadTriageRows();
+        this.refreshList();
+        this.renderShell();
+        const parts = [];
+        if (report.closed.length) parts.push(`${report.closed.length} closed`);
+        if (report.parked.length) parts.push(`${report.parked.length} parked`);
+        if (report.kept.length) parts.push(`${report.kept.length} kept`);
+        const filed = report.filings.filter((f) => f.status === "filed").length;
+        const skipped = report.filings.filter((f) => f.status.startsWith("skipped")).length;
+        this.onNotify(`Triage executed: ${parts.join(", ")} · filed ${filed}${skipped ? `, skipped ${skipped} (gh)` : ""} · restorable via todo restore <id>`);
+      })
+      .catch((err) => {
+        this.triageExecuting = false;
+        this.renderShell();
+        this.onNotify(`Triage failed: ${(err as Error).message}`, "error");
+      });
   }
 
   private openProjectSubmenu(name: string): void {
@@ -447,6 +616,8 @@ export class TodoPanel extends Container {
     this.projectFilterName = "";   // reset project scope on tab switch
     this.actionMode = false;
     this.actionList = null;
+    this.triageArm = false;        // batch intent never survives a tab switch
+    this.triageLoaded = false;     // re-gather on next triage entry (store may have changed)
     this.refreshList();
     this.renderShell();
   }
@@ -483,9 +654,19 @@ export class TodoPanel extends Container {
       this.invalidate();
       return;
     }
-    if (matchesKey(data, "escape") || matchesKey(data, "esc")) { this.onDone(); return; }
+    if (matchesKey(data, "escape") || matchesKey(data, "esc")) {
+      if (this.currentBox === "triage" && this.triageArm) {
+        this.triageArm = false;   // disarm first — don't close the panel mid-approval
+        this.renderShell();
+        return;
+      }
+      this.onDone();
+      return;
+    }
     if (matchesKey(data, "tab")) { this.switchBox(1); return; }
     if (matchesKey(data, "shift+tab")) { this.switchBox(-1); return; }
+    // Triage batch gate: capital `A` (so lowercase filter typing is unaffected).
+    if (this.currentBox === "triage" && data === "A") { this.approveTriageBatch(); return; }
     if (matchesKey(data, "up") || matchesKey(data, "down") || matchesKey(data, "enter") || matchesKey(data, "return")) {
       if (this.currentBox === "config" && this.settingsList) {
         this.settingsList.handleInput(data);

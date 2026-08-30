@@ -189,11 +189,18 @@ A Triage tab in the interactive panel is planned for v2; today the loop runs
 through the agent (the tool returns the candidates + rubric, the agent
 validates and proposes, you approve, one `approve:[…]` call executes + files).
 
+**Update (v0.8.0): the panel Triage tab ships.** `/todo` → Triage box: rows
+pre-chipped conservative (⚡ debris → close; everything else → keep), per-row
+verdict override (duplicate → survivor id, shipped → evidence via inline
+input), and a two-press batch gate — `A` arms with a close/park/keep summary,
+`A` again executes. Esc disarms; switching tabs drops batch intent. The agent
+loop (rubric + probes) remains the deeper validation path.
+
 ## Interactive panel (SPEC-3)
 
 Run `/todo` (no arg) in a TUI session to open the interactive triage panel:
 
-- **Box tabs** (Tab / Shift+Tab): Active · Parked · **Done** · Archive · **Projects** · Config
+- **Box tabs** (Tab / Shift+Tab): Active · Parked · **Done** · Archive · **Projects** · **Triage** · Config
 - **Filter input**: type to search by text (live filter)
 - **SelectList**: arrow keys navigate, Enter selects
 - **Action submenu** (on Enter): View detail / Complete / Park / Re-activate / Restore / Edit title / Delete
@@ -201,6 +208,7 @@ Run `/todo` (no arg) in a TUI session to open the interactive triage panel:
 - **Detail view** (View detail, or Enter on a row): renders the title + full `notes` read-only, with a footer hint on editing notes via the `todo` tool
 - **Archive box**: summary-first (counts by project + month) → Enter on a bucket to drill down
 - **Projects tab** (v0.4.0): per-project scope overview (open/in_progress/parked/done counts + `maxOpen` + `OVER`/`?typo` markers) + a `(no project)` summary row; Enter on a project → action submenu: Rename / merge · Set maxOpen · Filter active to project.
+- **Triage tab** (v0.8.0): triage candidates as rows with verdict chips (⚡ = mechanical-safe debris, pre-chipped close; all else keep). Enter → per-row verdict override (close debris/duplicate/stale/shipped · park · keep; duplicate asks the survivor id, shipped asks evidence). `A` arms the batch (close/park/keep summary bar), `A` again executes — closed items archive (reversible) and file to the private ledger. Esc disarms first.
 - **Config box**: SettingsList with prune ages + health thresholds — edit live, persists to `todo.config.json`
 - **Escape**: exit the panel
 

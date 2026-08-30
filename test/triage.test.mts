@@ -423,6 +423,102 @@ describe("ledger filing", () => {
 });
 
 // ---------------------------------------------------------------------------
+// panel data (v0.8.0 Triage tab helpers)
+
+import { triagePanelRows, triageRowToItem, actionsForTriageRow, planBatch, batchSummary, defaultVerdictFor, verdictChip, type TriagePanelRow } from "../src/panel-data.ts";
+
+describe("triage panel helpers", () => {
+  it("defaults conservatively: safe debris → close-debris, everything else → keep", () => {
+    assert.equal(defaultVerdictFor(true), "close-debris");
+    assert.equal(defaultVerdictFor(false), "keep");
+  });
+
+  it("triagePanelRows maps gather candidates to pre-chipped rows (pure read)", () => {
+    const debris = staleTodo({ title: "You are implementing Task 9: E2E legs", project: "fleet", ageDays: 20 });
+    const stale = staleTodo({ title: "old backlog item", project: "core", ageDays: 45 });
+    const before = JSON.stringify(loadStore());
+    const rows = triagePanelRows();
+    assert.equal(JSON.stringify(loadStore()), before, "pure read");
+    assert.equal(rows.length, 2);
+    const debrisRow = rows.find((r) => r.id === debris)!;
+    const staleRow = rows.find((r) => r.id === stale)!;
+    assert.equal(debrisRow.verdict, "close-debris");
+    assert.equal(debrisRow.mechanicalSafe, true);
+    assert.equal(staleRow.verdict, "keep");
+    assert.equal(staleRow.mechanicalSafe, false);
+    assert.ok(staleRow.categories.includes("stale-30d"));
+  });
+
+  it("triageRowToItem renders chip, safe marker, categories, and title", () => {
+    const row: TriagePanelRow = { id: "td-x", title: "fix the thing", project: "core", categories: "stale-30d", ageDays: 45, mechanicalSafe: false, verdict: "close-stale" };
+    const item = triageRowToItem(row);
+    assert.equal(item.value, "td-x");
+    assert.ok(item.label.includes("CLOSE·stale"));
+    assert.ok(item.label.includes("core"));
+    assert.ok(item.label.includes("45d"));
+    assert.ok(item.label.includes("stale-30d"));
+    assert.ok(item.label.includes("fix the thing"));
+    assert.ok(!item.label.includes("⚡"), "safe marker only on mechanical-safe rows");
+    assert.ok(triageRowToItem({ ...row, mechanicalSafe: true }).label.includes("⚡"));
+  });
+
+  it("verdict chips cover every verdict", () => {
+    for (const v of ["close-debris", "close-duplicate", "close-stale", "close-shipped", "park", "keep"] as const) {
+      assert.ok(verdictChip(v).length > 0);
+    }
+  });
+
+  it("actionsForTriageRow exposes every verdict + view", () => {
+    const acts = actionsForTriageRow().map((a) => a.action);
+    for (const v of ["v:close-debris", "v:close-duplicate", "v:close-stale", "v:close-shipped", "v:park", "v:keep", "view"]) {
+      assert.ok(acts.includes(v));
+    }
+  });
+
+  it("planBatch: all-keep rows produce no decisions and no errors", () => {
+    const plan = planBatch([
+      { id: "a", title: "t", project: "", categories: "x", ageDays: 40, mechanicalSafe: false, verdict: "keep" },
+      { id: "b", title: "t", project: "", categories: "x", ageDays: 40, mechanicalSafe: false, verdict: "keep" },
+    ]);
+    assert.deepEqual(plan.decisions, []);
+    assert.deepEqual(plan.errors, []);
+    assert.equal(batchSummary(plan), "0 close / 0 park / 2 keep");
+  });
+
+  it("planBatch: builds engine-shaped decisions, debris gets mechanical evidence", () => {
+    const plan = planBatch([
+      { id: "a", title: "t", project: "fleet", categories: "agent-source", ageDays: 20, mechanicalSafe: true, verdict: "close-debris" },
+      { id: "b", title: "t", project: "core", categories: "stale-30d", ageDays: 45, mechanicalSafe: false, verdict: "park" },
+    ]);
+    assert.equal(plan.close, 1);
+    assert.equal(plan.park, 1);
+    assert.deepEqual(plan.errors, []);
+    const close = plan.decisions.find((d) => d.id === "a")!;
+    assert.equal(close.verdict, "close");
+    assert.equal(close.reason, "debris");
+    assert.equal(close.confidence, "high");
+    assert.match(close.evidence!, /mechanical/);
+    assert.deepEqual(plan.decisions.find((d) => d.id === "b")!, { id: "b", verdict: "park" });
+  });
+
+  it("planBatch: D2 validation — duplicate needs survivor, shipped needs evidence", () => {
+    const bad = planBatch([
+      { id: "a", title: "t", project: "", categories: "x", ageDays: 40, mechanicalSafe: false, verdict: "close-duplicate" },
+      { id: "b", title: "t", project: "", categories: "x", ageDays: 40, mechanicalSafe: false, verdict: "close-shipped" },
+    ]);
+    assert.equal(bad.errors.length, 2);
+    assert.ok(bad.errors[0].includes("a"));
+    const good = planBatch([
+      { id: "a", title: "t", project: "", categories: "x", ageDays: 40, mechanicalSafe: false, verdict: "close-duplicate", survivorId: "td-survivor" },
+      { id: "b", title: "t", project: "", categories: "x", ageDays: 40, mechanicalSafe: false, verdict: "close-shipped", evidence: "npm view shows 2.0 shipped" },
+    ]);
+    assert.deepEqual(good.errors, []);
+    assert.equal(good.decisions.find((d) => d.id === "a")!.survivorId, "td-survivor");
+    assert.equal(good.decisions.find((d) => d.id === "b")!.evidence, "npm view shows 2.0 shipped");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // proposal table / report rendering + rubric prompt
 
 describe("triage rendering + prompt", () => {
