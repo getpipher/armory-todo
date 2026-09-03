@@ -328,6 +328,7 @@ Run the store tests: `npm test` (497/497 across 15 suites).
 ## License
 
 MIT.
+
 ## MCP tool scoping (armory-gateway integration)
 
 When [`@getpipher/armory-gateway`](https://github.com/getpipher/armory-gateway) is installed in the
