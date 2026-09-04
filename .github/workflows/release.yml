@@ -30,10 +30,26 @@ jobs:
 
       # No lockfile + only optional peer deps → a bare install is enough.
       # The test suite runs via node directly (native TS in node 24).
+      # SPEC-1b-3 D5: contract tests import the REAL @getpipher/armory-gateway
+      # (private repo — token-less clone fails). SIBLINGS_PAT is a per-repo secret.
+      - name: Clone armory-gateway (private sibling — contract tests require it)
+        env:
+          SIBLINGS_PAT: ${{ secrets.SIBLINGS_PAT }}
+        run: git clone --depth 1 https://x-access-token:${SIBLINGS_PAT}@github.com/getpipher/armory-gateway.git ../armory-gateway
+
+      # Bare clone has no node_modules — the contract-test import pulls gateway's
+      # full src tree (client.ts → @modelcontextprotocol/sdk …), so its own deps
+      # must be installed before `npm test`.
+      - name: Install gateway deps (bare clone has none)
+        working-directory: ../armory-gateway
+        run: npm install --ignore-scripts
+
       - run: npm install --ignore-scripts
 
       - name: Run tests
         run: npm test
+        env:
+          ARMORY_GATEWAY_PATH: ${{ github.workspace }}/../armory-gateway
 
       - name: Skip if already published
         id: check

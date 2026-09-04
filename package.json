@@ -41,7 +41,7 @@
     ]
   },
   "scripts": {
-    "test": "for t in todo-store todo-title-notes todo-archive todo-config todo-migrate todo-health todo-hard-prune todo-auto-prune registry projects panel-data todo-caps todo-backup todo-reap triage public-api; do node test/$t.test.mts || exit 1; done"
+    "test": "for t in todo-store todo-title-notes todo-archive todo-config todo-migrate todo-health todo-hard-prune todo-auto-prune registry projects panel-data todo-caps todo-backup todo-reap triage public-api visibility-provider gateway-adapter; do node test/$t.test.mts || exit 1; done"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

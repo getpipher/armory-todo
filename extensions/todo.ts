@@ -127,6 +127,14 @@ export default function (pi: ExtensionAPI) {
       } catch {
         // reap optional — never crash the session notify
       }
+      // SPEC-1b-3: register the gateway visibility provider (silent skip when
+      // @getpipher/armory-gateway is absent — standalone todo unchanged).
+      try {
+        const { registerGatewayVisibilityProvider } = await import("../src/gateway-adapter.ts");
+        await registerGatewayVisibilityProvider();
+      } catch {
+        // gateway absent — standalone degradation
+      }
       const showCount = cfg?.notify?.sessionStartCount !== false;
       const open = listTodos();
       let msg = "";

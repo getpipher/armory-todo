@@ -328,3 +328,20 @@ Run the store tests: `npm test` (497/497 across 15 suites).
 ## License
 
 MIT.
+
+## MCP tool scoping (armory-gateway integration)
+
+When [`@getpipher/armory-gateway`](https://github.com/getpipher/armory-gateway) is installed in the
+same pi, armory-todo can scope the session's MCP tools to your active work: tag a TODO with
+`mcp:<server>` or `mcp:<server>__<tool>` and set it `in_progress`.
+
+    todo add "ship the fix" --tags mcp:github,mcp:nanuqfi__transfer
+    todo update td-xxx --status in_progress
+
+- While that TODO is `in_progress`, gateway narrows visible MCP tools to the union of the tagged
+  servers/tools (multiple in_progress TODOs combine). No tags → no narrowing, ever.
+- The injected TODO block shows the scoping state in every session — a narrowed session can always
+  see why, and parking/completing the TODO widens tools back immediately.
+- Invalid `mcp:` tags are skipped (a typo narrows less, never more). Scoping is a convenience —
+  armory-fleet's `mcpDeny` remains the enforced security policy.
+- Without armory-gateway installed, todo behaves exactly as before.
